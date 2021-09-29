@@ -63,12 +63,12 @@ def gen_sine_wave(N=100, L=1000, T=20):
 
 def ts_to_supervised(data, n_in=1, n_out=1, dropnan=True):
     """
-    Frame a time series as a supervised learning dataset.
+    Frame a time series as a supervised learning dataset. Create windows basically.
     Works for multivariate data as well.
 
     Arguments:
     data: Sequence of observations as a list or NumPy array.
-    n_in: Number of lag observations as input (X).
+    n_in: Number of lag observations as input (X). (window size)
     n_out: Number of observations as output (to predict: [t,...,t+(n_out-1)] (y).
     dropnan: Boolean whether or not to drop rows with NaN values.
 

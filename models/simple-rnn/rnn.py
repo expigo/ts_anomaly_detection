@@ -187,6 +187,7 @@ def get_data(d: Dataset = Dataset.LINREG, dim=1, scaler=MinMaxScaler(feature_ran
         data = data[:, :dim]
     elif d is Dataset.WIGGLY_SINE:
         _, data = get_noisy_wiggly_sine(1000)
+        data = data.reshape(-1, 1)
     elif d is Dataset.PASSENGERS:
         data = get_passengers()[['Passengers']]
     else:
@@ -299,10 +300,10 @@ if __name__ == "__main__":
     batch_size = 2
     hidden_dim = 10
     n_layers = 1
-    af = 'relu'
+    af = 'tanh'
 
     rmse = train_and_evaluate(N_EPOCHS, lr, batch_size, hidden_dim, input_size, output_size, n_layers,
-                              Dataset.SINE, activ_fun=af, do_plot=True)
+                              Dataset.WIGGLY_SINE, activ_fun=af, do_plot=True)
 
     # ------------ /single ---------------
 

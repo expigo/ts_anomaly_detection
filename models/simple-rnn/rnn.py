@@ -40,6 +40,7 @@ class SimpleRNN(torch.nn.Module):
 
 def train_and_evaluate(n_epochs, lr, batch_size, hidden_dim, input_size, output_size, n_layers, dataset,
                        do_plot=True, activ_fun='relu'):
+
     original, scaled, scaler = get_data(dataset)
     train_loader, test_loader, n_train = get_dataloaders(batch_size, input_size, output_size, scaled)
 
@@ -196,7 +197,6 @@ def get_data(d: Dataset = Dataset.LINREG, dim=1, scaler=MinMaxScaler(feature_ran
     return data, scaled, scaler
 
 
-
 def reproduce_best(d: Dataset):
     if d is Dataset.LINREG:
         N_EPOCHS = 100
@@ -294,15 +294,15 @@ if __name__ == "__main__":
     input_size = 1  # window size
     output_size = 1  # TODO
 
-    N_EPOCHS = 100
+    N_EPOCHS = 10
     lr = 0.01
     batch_size = 2
     hidden_dim = 10
     n_layers = 1
     af = 'relu'
 
-    rmse = train_and_evaluate(N_EPOCHS, lr, batch_size, hidden_dim, n_layers, input_size, output_size,
-                              Dataset.LINREG, activ_fun=af, do_plot=True)
+    rmse = train_and_evaluate(N_EPOCHS, lr, batch_size, hidden_dim, input_size, output_size, n_layers,
+                              Dataset.SINE, activ_fun=af, do_plot=True)
 
     # ------------ /single ---------------
 

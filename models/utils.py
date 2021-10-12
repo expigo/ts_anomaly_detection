@@ -12,39 +12,40 @@ from matplotlib import pyplot as plt
 def get_project_root() -> Path:
     return Path(__file__).parent.parent
 
+
 def get_data_dir_path():
     return get_project_root().joinpath('data')
 
-def print_labeled_locations() -> dict:
-    """
-    Curated list of "eye-labeled" datasets (source: hexagon)
-    :return: dict[loc_id: str]: split_index:int
-    """
-    locs = {}
-    locs['004'] = 5590
-    locs['011'] = 11860
-    locs['012'] = 16055
-    return locs
 
-
-def get_all_filenames(data_dir_path: str) -> dict:
+def get_all_filenames(data_dir_path: Path) -> dict:
     filenames = next(os.walk(data_dir_path), (None, None, []))[2]
-    return {f.split(sep='_')[0]: (f, f.split('_')[3].split('.')[0]) for f in filenames}
+    return {f.split(sep='_')[0]: (f,
+                                  int(f.split('_')[4]),
+                                  int(f.split('_')[5]),
+                                  int(f.split('_')[6].split('.')[0]))
+            for f in filenames}
 
-def get_ts_by_id(id, data_dir_path='./data') -> (np.array, int):
-    filenames = get_all_filenames(data_dir_path)
-    file_path, split_index = filenames[f'{id}']
-    return np.genfromtxt(PurePath(data_dir_path).joinpath(file_path), delimiter='\n'), int(split_index)
 
-def plot_location_by_id(id, vlines = []):
-    data, split_index = get_ts_by_id(id)
+def get_hexagon_ts_by_id(id, data_dir_path=get_data_dir_path()) -> (np.array, int):
+    path_to_hexagon = data_dir_path.joinpath('hexagon_anomaly')
+    filenames = get_all_filenames(path_to_hexagon)
+    file_path, split_index, anomaly_start_idx, anomaly_stop_idx = filenames[f'{id:03}']
+    return np.genfromtxt(PurePath(path_to_hexagon).joinpath(file_path), delimiter='\n').reshape(-1, 1), \
+           split_index, anomaly_start_idx, anomaly_stop_idx
+
+
+def plot_hexagon_location_by_id(id, vlines=[]):
+    data, split_index, anomaly_start_idx, anomaly_stop_idx = get_hexagon_ts_by_id(id)
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.plot(data)
-    ax.vlines([split_index, *vlines], data.min(), data.max(), linestyles='dashed', colors='red')
+    # plt.figure(2)
+    ax.plot(data, color='royalblue')
+    ax.vlines([split_index, *vlines], *ax.get_ylim(), linestyles='dashed', colors='k', label='train/test split')
+    ax.axvspan(anomaly_start_idx, anomaly_stop_idx, alpha=0.5, color='salmon', label='anomaly occurrence area')
 
-    plt.title(f'location {id}\n split @ {split_index}')
-    # fig.show()
+    ax.set_title(f'location {id}\n split @ {split_index}')
+    plt.legend()
+
 
 def gen_sine_wave(N=100, L=1000, T=20):
     """
@@ -55,7 +56,7 @@ def gen_sine_wave(N=100, L=1000, T=20):
     """
 
     x = np.empty((N, L), np.float32)
-    x[:] = np.array(range(L)) + np.random.randint(-4*T, 4*T, N).reshape(N, 1)  # introduce some shifts
+    x[:] = np.array(range(L)) + np.random.randint(-4 * T, 4 * T, N).reshape(N, 1)  # introduce some shifts
     y = np.sin(x / T).astype(np.float32)
 
     return y.T
@@ -98,10 +99,12 @@ def ts_to_supervised(data, n_in=1, n_out=1, dropnan=True):
         agg.dropna(inplace=True)
     return agg
 
+
 def get_passengers():
     print(os.getcwd())
     return pd.read_csv(get_data_dir_path().joinpath('misc/airline-passengers.csv'), sep=',', header=0)
     # return np.genfromtxt('../data/misc/airline-passengers.csv', delimiter=',')
+
 
 def sine_2(X, signal_freq=100.):
     # return np.sin(2 * np.pi * X / signal_freq)
@@ -112,6 +115,7 @@ def noisy(Y, noise_range=(-.05, .05)):
     noise = np.random.uniform(noise_range[0], noise_range[1], size=Y.shape)
     return np.array(Y + noise)
 
+
 def get_noisy_wiggly_sine(sample_size):
     random_offset = random.randint(0, sample_size)
     X = np.arange(sample_size)
@@ -119,8 +123,9 @@ def get_noisy_wiggly_sine(sample_size):
     Y = noisy(x_base)
     return x_base, Y  # .reshape(-1, 1)
 
+
 def get_linear_regression_data(n):
-    X = np.linspace(-10, 10, num=n+1)
+    X = np.linspace(-10, 10, num=n + 1)
     y = 3 * X + 1
     start_time = datetime(2020, 7, 1, 1, 0, 0)
     timestamps = pd.Series(pd.date_range(
@@ -134,6 +139,7 @@ def get_linear_regression_data(n):
         columns=['data']
     )
     return dataframe
+
 
 def set_seed(seed=42):
     torch.backends.cudnn.deterministic = True

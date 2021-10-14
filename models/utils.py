@@ -16,9 +16,20 @@ def get_project_root() -> Path:
 def get_data_dir_path():
     return get_project_root().joinpath('data')
 
+def get_trained_models_dir_path():
+    return get_project_root().joinpath('trained_models')
+
 
 def get_all_filenames(data_dir_path: Path) -> dict:
     filenames = next(os.walk(data_dir_path), (None, None, []))[2]
+    return filenames
+
+def get_all_dirnames(data_dir_path: Path) -> dict:
+    dir_names = next(os.walk(data_dir_path), (None, None, []))[1]
+    return dir_names
+
+
+def get_hexagon_ts_metadata(filenames):
     return {f.split(sep='_')[0]: (f,
                                   int(f.split('_')[4]),
                                   int(f.split('_')[5]),
@@ -29,7 +40,8 @@ def get_all_filenames(data_dir_path: Path) -> dict:
 def get_hexagon_ts_by_id(id, data_dir_path=get_data_dir_path()) -> (np.array, int):
     path_to_hexagon = data_dir_path.joinpath('hexagon_anomaly')
     filenames = get_all_filenames(path_to_hexagon)
-    file_path, split_index, anomaly_start_idx, anomaly_stop_idx = filenames[f'{id:03}']
+    metadata = get_hexagon_ts_metadata(filenames)
+    file_path, split_index, anomaly_start_idx, anomaly_stop_idx = metadata[f'{id:03}']
     return np.genfromtxt(PurePath(path_to_hexagon).joinpath(file_path), delimiter='\n').reshape(-1, 1), \
            split_index, anomaly_start_idx, anomaly_stop_idx
 
@@ -125,7 +137,7 @@ def get_noisy_wiggly_sine(sample_size):
 
 
 def get_linear_regression_data(n):
-    X = np.linspace(-10, 10, num=n + 1)
+    X = np.linspace(-10, 10, num=n)
     y = 3 * X + 1
     start_time = datetime(2020, 7, 1, 1, 0, 0)
     timestamps = pd.Series(pd.date_range(
@@ -149,3 +161,73 @@ def set_seed(seed=42):
     torch.use_deterministic_algorithms(True)
     np.random.seed(seed)
     random.seed(seed)
+
+
+def save_model_old(model, history: dict, N_EPOCHS, d, n_layers, af, lr, hidx=None,
+               name:str ='model_' + datetime.now().strftime("%Y%m%d-%H%M%S")):
+    path = get_trained_models_dir_path().joinpath(name).joinpath('model')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    desc_path = get_trained_models_dir_path().joinpath(name).joinpath(f'desc.txt')
+    with open(desc_path, "w") as text_file:
+        print(model, file=text_file)
+        print(f'epochs: {N_EPOCHS}', file=text_file)
+        print(f'datasetype: {d} ({hidx})', file=text_file)
+        print(f'layers: {n_layers}', file=text_file)
+        print(f'af: {af}', file=text_file)
+        print(f'lr: {lr}', file=text_file)
+
+    pd.DataFrame.from_dict(history).to_csv(path.parent.joinpath('loss_history.csv'), sep=',', index=False)
+
+    torch.save(model, path)
+
+
+def save_model(model, history: dict, model_params, training_params, d=None, hidx=None,
+               name:str ='model_' + datetime.now().strftime("%Y%m%d-%H%M%S"), val_set:bool=True):
+    root = get_trained_models_dir_path()
+    path = root.joinpath(name).joinpath('model')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    desc_path = root.joinpath(name).joinpath(f'desc.txt')
+    with open(desc_path, "w") as text_file:
+        print(model, file=text_file)
+        print(f"epochs: {training_params['n_epochs']}", file=text_file)
+        print(f'datasetype: {d} ({hidx})', file=text_file)
+        print(f"layers: {model_params['n_layers']}", file=text_file)
+        print(f"af: {model_params['af']}", file=text_file)
+        print(f"lr: {training_params['lr']}", file=text_file)
+
+    registry_path = root.joinpath('registry.csv')
+
+    data_params = {
+        "dataset": d,
+        "hexagon_id": hidx,
+        "val_set_used": val_set
+    }
+    pd.DataFrame(model_params | training_params | data_params, index=[name]).to_csv(registry_path,
+                                                                      mode='a+',
+                                                                      header=not os.path.exists(registry_path),
+                                                                      index=[0])
+
+
+    pd.DataFrame.from_dict(history).to_csv(path.parent.joinpath('loss_history.csv'), sep=',', index=False)
+
+
+    torch.save(model, path)
+
+
+def load_model(name=None):
+    all_models_path = get_trained_models_dir_path()
+    model_dirs = get_all_dirnames(all_models_path)
+    if not model_dirs:
+        raise ValueError('No saved models to choose from!')
+    if name is None:
+        # get last
+        dates_sorted_desc = sorted(model_dirs,
+                                   key=lambda d: datetime.strptime(d.split('_')[1], "%Y%m%d-%H%M%S"),
+                                   reverse=True)
+        last = Path(dates_sorted_desc[0]).joinpath('model')
+        name = all_models_path.joinpath(last)
+    else:
+        name = all_models_path.joinpath(name).joinpath('model')
+
+    trained = torch.load(name)
+    return trained

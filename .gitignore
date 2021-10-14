@@ -230,6 +230,7 @@ cython_debug/
 
 # data folder
 data
+trained_models
 
 # drafts and stuff
 playground.py

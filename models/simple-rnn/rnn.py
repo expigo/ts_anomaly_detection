@@ -7,8 +7,9 @@ import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import MinMaxScaler, FunctionTransformer, StandardScaler, MaxAbsScaler, RobustScaler
+from sklearn.neighbors import KernelDensity
 import seaborn as sns
 from scipy import stats
 
@@ -356,7 +357,7 @@ def reconstruct_ts(model, dataloder):
     return np.array(predictions), np.array(losses)
 
 
-def get_threshold(losses:np.array) -> float:
+def get_threshold(losses:np.array, kde=False) -> float:
     bins = np.linspace(losses.min(), losses.max(), 50)
     bin_nums = np.digitize(losses, bins) - 1
     hist_vals = np.bincount(bin_nums)
@@ -370,9 +371,26 @@ def get_threshold(losses:np.array) -> float:
     # plt.legend()
     # plt.plot(scaler.inverse_transform(np.array(yy).reshape(-1, 1)), label='yy')
     # _, losses = reconstruct_ts(rnn, train_X)
-    fg = sns.displot(losses, bins=50, kde=True)
+    gt = losses
+    if kde:
+        sns.displot(losses, bins=50, kde=True)
 
-    return losses.max()
+        # params = {'bandwidth': np.logspace(-1, 1, 100)}
+        # grid = GridSearchCV(KernelDensity(), params)
+        # grid.fit(losses[:, None])
+        #
+        # kde = grid.best_estimator_
+        #
+        # losses = losses.reshape(-1, 1)
+        kde = KernelDensity(bandwidth=.1).fit(losses[:, None])
+        scores = kde.score_samples(losses[:, None])
+        threshold = np.quantile(scores, .99)
+        gt = scores
+    else:
+        kde = None
+        threshold = losses.max()
+
+    return threshold, kde, gt
 
 if __name__ == "__main__":
     # ------------- single --------------
@@ -407,8 +425,9 @@ if __name__ == "__main__":
     val_set = True
 
     d = Dataset.HEXAGON
-    hidx = 129
+    hidx = 11
     plot_hexagon_location_by_id(hidx)
+    # plt.show()
 
     scaler = get_scaler('minmax')
     # show_table_params()
@@ -428,7 +447,7 @@ if __name__ == "__main__":
     # save_model(trained, history, model_params, training_params, d, hidx, val_set=val_set)
 
     # or use trained one
-    trained = load_model('model_20211014-201349')  # exemplary model that works
+    trained = load_model('model_20211014-193756')  # exemplary model that works
 
     # 5. evaluate
     y_test, y_hat = evaluate(trained, test_loader_one, scaler)
@@ -448,9 +467,11 @@ if __name__ == "__main__":
     reconstructed_train_data, losses = reconstruct_ts(trained, train_loader_one)
     print('max mae:', losses.max(), 'at', np.argwhere(losses == losses.max()))
 
-    THRESHOLD = get_threshold(losses)
+    THRESHOLD, kde_test, scores = get_threshold(losses, kde=False)
 
     reconstructed_test_data, losses_test = reconstruct_ts(trained, test_loader_one)
+    # kde_test = KernelDensity().fit(losses_test.reshape(-1, 1))
+    # losses_test = kde_test.score_samples(losses_test.reshape(-1, 1))
     anomalies_count = sum(l >= THRESHOLD for l in losses_test)
     anomalies_idxs = np.argwhere(losses_test >= THRESHOLD)
     print(anomalies_idxs + n_train)

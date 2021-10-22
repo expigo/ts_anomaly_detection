@@ -8,6 +8,8 @@ import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 
+from models.simple_rnn.rnn import SimpleRNN
+
 
 def get_project_root() -> Path:
     return Path(__file__).parent.parent
@@ -178,7 +180,7 @@ def save_model_old(model, history: dict, N_EPOCHS, d, n_layers, af, lr, hidx=Non
 
     pd.DataFrame.from_dict(history).to_csv(path.parent.joinpath('loss_history.csv'), sep=',', index=False)
 
-    torch.save(model, path)
+    torch.save(model.state_dict(), path)
 
 
 def save_model(model, history: dict, model_params, training_params, d=None, hidx=None,
@@ -211,10 +213,10 @@ def save_model(model, history: dict, model_params, training_params, d=None, hidx
     pd.DataFrame.from_dict(history).to_csv(path.parent.joinpath('loss_history.csv'), sep=',', index=False)
 
 
-    torch.save(model, path)
+    torch.save(model.state_dict(), path)
 
 
-def load_model(name=None):
+def load_model(model=None, name=None):
     all_models_path = get_trained_models_dir_path()
     model_dirs = get_all_dirnames(all_models_path)
     if not model_dirs:
@@ -229,5 +231,25 @@ def load_model(name=None):
     else:
         name = all_models_path.joinpath(name).joinpath('model')
 
-    trained = torch.load(name)
-    return trained
+    if model is None:
+        model = get_model_by_name(name.parent.stem)
+
+    trained_dict = torch.load(name)
+    model.load_state_dict(trained_dict)
+    return model
+
+
+def get_model_by_name(name):
+    root = get_trained_models_dir_path()
+    registry_path = root.joinpath('registry.csv')
+
+    registry = pd.read_csv(registry_path, index_col=0)
+
+    model_params = registry.loc[[name],
+                     ['input_size', 'output_size', 'hidden_dim', 'n_layers', 'dropout', 'af']
+    ].to_numpy().ravel()
+
+    rnn = SimpleRNN(*model_params)
+    return rnn
+
+load_model()

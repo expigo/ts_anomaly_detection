@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 from matplotlib import pyplot as plt
+from sklearn.model_selection import train_test_split, GridSearchCV
 
 from models.simple_rnn.rnn import SimpleRNN
 
@@ -17,6 +18,7 @@ def get_project_root() -> Path:
 
 def get_data_dir_path():
     return get_project_root().joinpath('data')
+
 
 def get_trained_models_dir_path():
     return get_project_root().joinpath('trained_models')
@@ -29,51 +31,6 @@ def get_all_filenames(data_dir_path: Path) -> dict:
 def get_all_dirnames(data_dir_path: Path) -> dict:
     dir_names = next(os.walk(data_dir_path), (None, None, []))[1]
     return dir_names
-
-
-def get_hexagon_ts_metadata(filenames):
-    return {f.split(sep='_')[0]: (f,
-                                  int(f.split('_')[4]),
-                                  int(f.split('_')[5]),
-                                  int(f.split('_')[6].split('.')[0]))
-            for f in filenames}
-
-
-def get_hexagon_ts_by_id(id, data_dir_path=get_data_dir_path()) -> (np.array, int):
-    path_to_hexagon = data_dir_path.joinpath('hexagon_anomaly')
-    filenames = get_all_filenames(path_to_hexagon)
-    metadata = get_hexagon_ts_metadata(filenames)
-    file_path, split_index, anomaly_start_idx, anomaly_stop_idx = metadata[f'{id:03}']
-    return np.genfromtxt(PurePath(path_to_hexagon).joinpath(file_path), delimiter='\n').reshape(-1, 1), \
-           split_index, anomaly_start_idx, anomaly_stop_idx
-
-
-def plot_hexagon_location_by_id(id, vlines=[]):
-    data, split_index, anomaly_start_idx, anomaly_stop_idx = get_hexagon_ts_by_id(id)
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-    # plt.figure(2)
-    ax.plot(data, color='royalblue')
-    ax.vlines([split_index, *vlines], *ax.get_ylim(), linestyles='dashed', colors='k', label='train/test split')
-    ax.axvspan(anomaly_start_idx, anomaly_stop_idx, alpha=0.5, color='salmon', label='anomaly occurrence area')
-
-    ax.set_title(f'location {id}\n split @ {split_index}')
-    plt.legend()
-
-
-def gen_sine_wave(N=100, L=1000, T=20):
-    """
-    :param N: no of samples
-    :param L: length of each sample
-    :param T: width of the wave
-    :return:
-    """
-
-    x = np.empty((N, L), np.float32)
-    x[:] = np.array(range(L)) + np.random.randint(-4 * T, 4 * T, N).reshape(N, 1)  # introduce some shifts
-    y = np.sin(x / T).astype(np.float32)
-
-    return y.T
 
 
 def ts_to_supervised(data, n_in=1, n_out=1, dropnan=True):
@@ -114,47 +71,6 @@ def ts_to_supervised(data, n_in=1, n_out=1, dropnan=True):
     return agg
 
 
-def get_passengers():
-    print(os.getcwd())
-    return pd.read_csv(get_data_dir_path().joinpath('misc/airline-passengers.csv'), sep=',', header=0)
-    # return np.genfromtxt('../data/misc/airline-passengers.csv', delimiter=',')
-
-
-def sine_2(X, signal_freq=100.):
-    # return np.sin(2 * np.pi * X / signal_freq)
-    return (np.sin(2 * np.pi * X / signal_freq) + np.sin(4 * np.pi * X / signal_freq)) / 2.0
-
-
-def noisy(Y, noise_range=(-.05, .05)):
-    noise = np.random.uniform(noise_range[0], noise_range[1], size=Y.shape)
-    return np.array(Y + noise)
-
-
-def get_noisy_wiggly_sine(sample_size):
-    random_offset = random.randint(0, sample_size)
-    X = np.arange(sample_size)
-    x_base = sine_2(X + random_offset)
-    Y = noisy(x_base)
-    return x_base, Y  # .reshape(-1, 1)
-
-
-def get_linear_regression_data(n):
-    X = np.linspace(-10, 10, num=n)
-    y = 3 * X + 1
-    start_time = datetime(2020, 7, 1, 1, 0, 0)
-    timestamps = pd.Series(pd.date_range(
-        start_time,
-        freq='H',
-        periods=y.shape[0]
-    ))
-    dataframe = pd.DataFrame(
-        data=y,
-        index=timestamps,
-        columns=['data']
-    )
-    return dataframe
-
-
 def set_seed(seed=42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -163,24 +79,6 @@ def set_seed(seed=42):
     torch.use_deterministic_algorithms(True)
     np.random.seed(seed)
     random.seed(seed)
-
-
-def save_model_old(model, history: dict, N_EPOCHS, d, n_layers, af, lr, hidx=None,
-               name:str ='model_' + datetime.now().strftime("%Y%m%d-%H%M%S")):
-    path = get_trained_models_dir_path().joinpath(name).joinpath('model')
-    path.parent.mkdir(parents=True, exist_ok=True)
-    desc_path = get_trained_models_dir_path().joinpath(name).joinpath(f'desc.txt')
-    with open(desc_path, "w") as text_file:
-        print(model, file=text_file)
-        print(f'epochs: {N_EPOCHS}', file=text_file)
-        print(f'datasetype: {d} ({hidx})', file=text_file)
-        print(f'layers: {n_layers}', file=text_file)
-        print(f'af: {af}', file=text_file)
-        print(f'lr: {lr}', file=text_file)
-
-    pd.DataFrame.from_dict(history).to_csv(path.parent.joinpath('loss_history.csv'), sep=',', index=False)
-
-    torch.save(model.state_dict(), path)
 
 
 def save_model(model, history: dict, model_params, training_params, d=None, hidx=None,
@@ -252,4 +150,122 @@ def get_model_by_name(name):
     rnn = SimpleRNN(*model_params)
     return rnn
 
-load_model()
+
+
+def test_train_split_by_idx(df, idx):
+    pass
+
+
+def feature_label_split(df, feature_size, values_only=False):
+    X = df.iloc[:, :-feature_size]
+    y = df.iloc[:, -feature_size:]
+    if values_only:
+        return X.values, y.values
+    else:
+        return X, y
+
+
+def get_dataloaders(data, batch_size, input_size, output_size, val_set=True, n_train=None, test_size=0.2):
+    """
+    Splits data into train and test sets.
+    Prepares DataLoaders for both.
+
+    Args:
+        batch_size:
+        input_size: window size
+        data:
+
+    Returns:
+    Create data loader and the index of dataset split
+    """
+
+    # create windows and prepare for batching
+    labeled = ts_to_supervised(data, input_size, output_size, dropnan=True)
+    dataset_size = labeled.shape[0]
+
+    # ----- split into train and test sets -----
+
+    if n_train is not None:
+        X, y = feature_label_split(labeled, output_size, values_only=True)
+        train_X, test_X = X[:n_train, :], X[n_train:, :]
+        train_y, test_y = y[:n_train, :], y[n_train:, :]
+        if val_set:
+            test_dataset_size = test_X.shape[0]
+            train_dataset_size = train_X.shape[0]
+            test_ratio = test_dataset_size / dataset_size
+            test_ratio = min(test_ratio, 0.2)
+            val_ratio = test_ratio / (1 - test_ratio)
+            n_val = int(val_ratio * train_dataset_size)
+            train_X, train_y = train_X[:-n_val, :], train_y[:-n_val, :]
+            val_X, val_y = train_X[-n_val:, :], train_y[-n_val:, :]
+    else:
+        X, y = feature_label_split(labeled, output_size)
+        val_ratio = test_size / (1 - test_size)
+        train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=test_size, shuffle=False)
+        if val_set:
+            train_X, val_X, test_y, val_y = train_test_split(train_X, train_y, test_size=val_ratio, shuffle=False)
+
+    print(train_X.shape, train_y.shape, test_X.shape, test_y.shape)
+
+    # input shape: [batch_size, seq_length, features]
+    x_train = torch.tensor(train_X, dtype=torch.float).unsqueeze(1)
+    y_train = torch.tensor(train_y, dtype=torch.float).unsqueeze(1)
+    x_test = torch.tensor(test_X, dtype=torch.float).unsqueeze(1)
+    y_test = torch.tensor(test_y, dtype=torch.float).unsqueeze(1)
+    train = torch.utils.data.TensorDataset(x_train, y_train)
+    test = torch.utils.data.TensorDataset(x_test, y_test)
+    train_loader = torch.utils.data.DataLoader(train,
+                                               batch_size=batch_size,
+                                               shuffle=False,
+                                               num_workers=0,
+                                               pin_memory=False,
+                                               worker_init_fn=random.seed(42),
+                                               drop_last=True
+                                               )
+
+    train_loader_one = torch.utils.data.DataLoader(train,
+                                                   batch_size=1,
+                                                   shuffle=False,
+                                                   num_workers=0,
+                                                   pin_memory=False,
+                                                   worker_init_fn=random.seed(42),
+                                                   drop_last=True
+                                                   )
+
+
+    test_loader = torch.utils.data.DataLoader(test,
+                                              batch_size=batch_size,
+                                              shuffle=False,
+                                              num_workers=0,
+                                              pin_memory=False,
+                                              worker_init_fn=random.seed(42),
+                                              drop_last=True
+
+                                              )
+
+    test_loader_one = torch.utils.data.DataLoader(test,
+                                                  batch_size=1,
+                                                  shuffle=False,
+                                                  num_workers=0,
+                                                  pin_memory=False,
+                                                  worker_init_fn=random.seed(42),
+                                                  drop_last=True
+                                                  )
+
+    if val_set:
+        x_val = torch.Tensor(val_X).unsqueeze(1)
+        y_val = torch.Tensor(val_y).unsqueeze(1)
+
+        val = torch.utils.data.TensorDataset(x_val, y_val)
+        val_loader = torch.utils.data.DataLoader(val,
+                                                 batch_size=batch_size,
+                                                 shuffle=True,
+                                                 num_workers=0,
+                                                 pin_memory=False,
+                                                 worker_init_fn=random.seed(42),
+                                                 drop_last=True
+                                                 )
+        return train_loader, train_loader_one, test_loader, test_loader_one, val_loader, train_X
+    # -------------------------------------------------------
+
+    return train_loader, train_loader_one, test_loader, test_loader_one, None, train_X

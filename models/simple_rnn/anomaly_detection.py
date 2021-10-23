@@ -13,177 +13,15 @@ from sklearn.neighbors import KernelDensity
 import seaborn as sns
 from scipy import stats
 
-from models.utils import gen_sine_wave, ts_to_supervised, get_passengers, \
-    get_linear_regression_data, get_noisy_wiggly_sine, set_seed, get_hexagon_ts_by_id, plot_hexagon_location_by_id, \
-    save_model, load_model
+# from models.utils importdd set_seed, save_model, load_model
+import models.utils as model_utils
 
 from rnn import SimpleRNN
 
-set_seed(42)
+import data_utils.utils as data_utils
+
+model_utils.set_seed(42)
 plt.style.use('ggplot')
-
-
-class Dataset(Enum):
-    LINREG = 1
-    SINE = 2
-    WIGGLY_SINE = 3
-    PASSENGERS = 4
-    HEXAGON = 5
-
-
-def get_data(d=Dataset.LINREG, test_size=None, dim=1, hidx=None, scaler=MinMaxScaler(feature_range=(0, 1))):
-    if scaler is None:
-        scaler = FunctionTransformer(lambda x: x)  # identity
-
-    n_train = None
-    anomaly_start = None
-    anomaly_stop = None
-
-    if d is Dataset.LINREG:
-        data = get_linear_regression_data(1000).values
-    elif d is Dataset.SINE:
-        data = gen_sine_wave()
-        data = data[:, :dim]
-    elif d is Dataset.WIGGLY_SINE:
-        _, data = get_noisy_wiggly_sine(1000)
-        data = data.reshape(-1, 1)
-    elif d is Dataset.PASSENGERS:
-        data = get_passengers()[['Passengers']]
-    elif d is Dataset.HEXAGON:
-        if hidx is None:
-            raise ValueError("hix must be specified if Hexagon dataset in use")
-        data, n_train, anomaly_start, anomaly_stop = get_hexagon_ts_by_id(hidx)
-    else:
-        data = get_linear_regression_data(1000)
-
-    if test_size:
-        n_train = int(data.shape[0] * (1 - test_size))
-    elif d is not Dataset.HEXAGON:
-        n_train = int(data.shape[0] * (1 - .2))
-        # raise ValueError("If other than hexagon dataset is in use, test_size must be also specified")
-
-    scaled = scaler.fit_transform(data)
-
-    return data, scaled, n_train, anomaly_start, anomaly_stop
-
-
-def test_train_split_by_idx(df, idx):
-    pass
-
-
-def feature_label_split(df, feature_size, values_only=False):
-    X = df.iloc[:, :-feature_size]
-    y = df.iloc[:, -feature_size:]
-    if values_only:
-        return X.values, y.values
-    else:
-        return X, y
-
-
-def get_dataloaders(data, batch_size, input_size, output_size, val_set=True, n_train=None, test_size=0.2):
-    """
-    Splits data into train and test sets.
-    Prepares DataLoaders for both.
-
-    Args:
-        batch_size:
-        input_size: window size
-        data:
-
-    Returns:
-    Create data loader and the index of dataset split
-    """
-
-    # create windows and prepare for batching
-    labeled = ts_to_supervised(data, input_size, output_size, dropnan=True)
-    dataset_size = labeled.shape[0]
-
-    # ----- split into train and test sets -----
-
-    if n_train is not None:
-        X, y = feature_label_split(labeled, output_size, values_only=True)
-        train_X, test_X = X[:n_train, :], X[n_train:, :]
-        train_y, test_y = y[:n_train, :], y[n_train:, :]
-        if val_set:
-            test_dataset_size = test_X.shape[0]
-            train_dataset_size = train_X.shape[0]
-            test_ratio = test_dataset_size / dataset_size
-            test_ratio = min(test_ratio, 0.2)
-            val_ratio = test_ratio / (1 - test_ratio)
-            n_val = int(val_ratio * train_dataset_size)
-            train_X, train_y = train_X[:-n_val, :], train_y[:-n_val, :]
-            val_X, val_y = train_X[-n_val:, :], train_y[-n_val:, :]
-    else:
-        X, y = feature_label_split(labeled, output_size)
-        val_ratio = test_size / (1 - test_size)
-        train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=test_size, shuffle=False)
-        if val_set:
-            train_X, val_X, test_y, val_y = train_test_split(train_X, train_y, test_size=val_ratio, shuffle=False)
-
-    print(train_X.shape, train_y.shape, test_X.shape, test_y.shape)
-
-    # input shape: [batch_size, seq_length, features]
-    x_train = torch.tensor(train_X, dtype=torch.float).unsqueeze(1)
-    y_train = torch.tensor(train_y, dtype=torch.float).unsqueeze(1)
-    x_test = torch.tensor(test_X, dtype=torch.float).unsqueeze(1)
-    y_test = torch.tensor(test_y, dtype=torch.float).unsqueeze(1)
-    train = torch.utils.data.TensorDataset(x_train, y_train)
-    test = torch.utils.data.TensorDataset(x_test, y_test)
-    train_loader = torch.utils.data.DataLoader(train,
-                                               batch_size=batch_size,
-                                               shuffle=False,
-                                               num_workers=0,
-                                               pin_memory=False,
-                                               worker_init_fn=random.seed(42),
-                                               drop_last=True
-                                               )
-
-    train_loader_one = torch.utils.data.DataLoader(train,
-                                               batch_size=1,
-                                               shuffle=False,
-                                               num_workers=0,
-                                               pin_memory=False,
-                                               worker_init_fn=random.seed(42),
-                                               drop_last=True
-                                               )
-
-
-    test_loader = torch.utils.data.DataLoader(test,
-                                              batch_size=batch_size,
-                                              shuffle=False,
-                                              num_workers=0,
-                                              pin_memory=False,
-                                              worker_init_fn=random.seed(42),
-                                              drop_last=True
-
-                                              )
-
-    test_loader_one = torch.utils.data.DataLoader(test,
-                                                  batch_size=1,
-                                                  shuffle=False,
-                                                  num_workers=0,
-                                                  pin_memory=False,
-                                                  worker_init_fn=random.seed(42),
-                                                  drop_last=True
-                                                  )
-
-    if val_set:
-        x_val = torch.Tensor(val_X).unsqueeze(1)
-        y_val = torch.Tensor(val_y).unsqueeze(1)
-
-        val = torch.utils.data.TensorDataset(x_val, y_val)
-        val_loader = torch.utils.data.DataLoader(val,
-                                                 batch_size=batch_size,
-                                                 shuffle=True,
-                                                 num_workers=0,
-                                                 pin_memory=False,
-                                                 worker_init_fn=random.seed(42),
-                                                 drop_last=True
-                                                 )
-        return train_loader, train_loader_one, test_loader, test_loader_one, val_loader, train_X
-    # -------------------------------------------------------
-
-    return train_loader, train_loader_one, test_loader, test_loader_one, None, train_X
 
 
 def train(model, n_epochs, train_loader, val_loader=None):
@@ -343,45 +181,56 @@ def reconstruct_ts(model, dataloder):
     return np.array(predictions), np.array(losses)
 
 
-def get_threshold(losses:np.array, kde=False) -> float:
+def get_threshold(losses: np.array, kde=False) -> float:
     bins = np.linspace(losses.min(), losses.max(), 50)
     bin_nums = np.digitize(losses, bins) - 1
     hist_vals = np.bincount(bin_nums)
-    # plt.figure(3)
-    # plt.title('y_train')
-    # plt.plot(original, label="original")
-    #
-    # train_vals = y_train.detach().numpy().reshape(-1, 1)
-    # plt.plot(scaler.inverse_transform(train_vals), label='y_train')
-    # plt.plot(scaler.inverse_transform(train_X), label='train_x')
-    # plt.legend()
-    # plt.plot(scaler.inverse_transform(np.array(yy).reshape(-1, 1)), label='yy')
-    # _, losses = reconstruct_ts(rnn, train_X)
+
     gt = losses
-    if kde:
-        sns.displot(losses, bins=50, kde=True)
+    if kde is not None:
 
-        # params = {'bandwidth': np.logspace(-1, 1, 100)}
-        # grid = GridSearchCV(KernelDensity(), params)
-        # grid.fit(losses[:, None])
+        if isinstance(kde, float):
+            kde = KernelDensity(bandwidth=.1).fit(losses[:, None])
+        else:
+            params = {'bandwidth': np.logspace(-1, 1, 100)}
+            grid = GridSearchCV(KernelDensity(), params)
+            grid.fit(losses[:, None])
 
-        # kde = grid.best_estimator_
+            kde = grid.best_estimator_
 
         # losses = losses.reshape(-1, 1)
-        kde = KernelDensity(bandwidth=.1).fit(losses[:, None])
         scores = kde.score_samples(losses[:, None])
-        threshold = np.quantile(scores, .99)
+        sns.displot(scores, bins=50, kde=True)
+        threshold = np.quantile(scores, .0000001)
         gt = scores
     else:
         kde = None
         threshold = losses.max()
+        print('max mae:', threshold, 'at', np.argwhere(losses == losses.max()))
+
 
     return threshold, kde, gt
+
+
+def detect_anomalies(model, train_data, test_data, kde=True):
+    reconstructed_train_data, losses = reconstruct_ts(model, train_data)
+    reconstructed_test_data, losses_test = reconstruct_ts(model, test_data)
+
+    THRESHOLD, kde_test, train_scores = get_threshold(losses, kde=kde)
+
+    if kde:
+        losses_test = kde_test.score_samples(losses_test.reshape(-1, 1))
+
+    anomalies_count = sum(l >= THRESHOLD for l in losses_test)
+    print(f'Number of anomalies found: {anomalies_count}')
+    anomalies_idxs = np.argwhere(losses_test >= THRESHOLD) + n_train
+    return anomalies_idxs
+
 
 if __name__ == "__main__":
     # ------------- single --------------
 
-    input_size = 512  # window size
+    input_size = 72  # window size
     output_size = 1
 
     N_EPOCHS = 1000
@@ -410,30 +259,30 @@ if __name__ == "__main__":
 
     val_set = True
 
-    d = Dataset.HEXAGON
-    hidx = 11
-    plot_hexagon_location_by_id(hidx)
+    d = data_utils.Dataset.HEXAGON
+    hidx = 4
+    data_utils.plot_hexagon_location_by_id(hidx)
     # plt.show()
 
     scaler = get_scaler('minmax')
     # show_table_params()
 
     # 1. get data
-    original, scaled, n_train, anomaly_start, anomaly_stop = get_data(d, scaler=scaler, hidx=hidx)
+    original, scaled, n_train, anomaly_start, anomaly_stop = data_utils.get_data(d, scaler=scaler, hidx=hidx)
 
     # 2. get dataloaders
     train_loader, train_loader_one, test_loader, test_loader_one, val_loader, train_X \
-        = get_dataloaders(scaled, batch_size, input_size, output_size, n_train=n_train, val_set=val_set)
+        = model_utils.get_dataloaders(scaled, batch_size, input_size, output_size, n_train=n_train, val_set=val_set)
 
     # 3. get_model
     rnn = get_model('rnn', model_params)
 
     # 4. train
     # trained, history = train(rnn, N_EPOCHS, train_loader, val_loader=val_loader)
-    # save_model(trained, history, model_params, training_params, d, hidx, val_set=val_set)
+    # model_utils.save_model(trained, history, model_params, training_params, d, hidx, val_set=val_set)
 
     # or use trained one
-    trained = load_model()
+    trained = model_utils.load_model()
 
     # 5. evaluate
     y_test, y_hat = evaluate(trained, test_loader_one, scaler)
@@ -450,21 +299,9 @@ if __name__ == "__main__":
 
     plot(original, n_train, y_test, y_hat, title="test")
     # ----- anomaly detection ------
-    reconstructed_train_data, losses = reconstruct_ts(trained, train_loader_one)
-    print('max mae:', losses.max(), 'at', np.argwhere(losses == losses.max()))
-
-    THRESHOLD, kde_test, scores = get_threshold(losses, kde=True)
-
-    reconstructed_test_data, losses_test = reconstruct_ts(trained, test_loader_one)
-    # kde_test = KernelDensity().fit(losses_test.reshape(-1, 1))
-    losses_test = kde_test.score_samples(losses_test.reshape(-1, 1))
-    plt.plot(losses_test)
-    anomalies_count = sum(l >= THRESHOLD for l in losses_test)
-    anomalies_idxs = np.argwhere(losses_test >= THRESHOLD) + n_train
-    print(anomalies_idxs)
+    anomalies_idx = detect_anomalies(trained, train_loader_one, test_loader_one, kde=.1)
+    print(anomalies_idx)
     print(f'indicies should be in closed range: [{anomaly_start}, {anomaly_stop}]')
-    plt.show()
     print('done')
-    print()
     # ----- /anomaly detection ------
-
+    plt.show()

@@ -1,24 +1,16 @@
 import copy
-import random
-from enum import Enum
 
 import numpy as np
-import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import MinMaxScaler, FunctionTransformer, StandardScaler, MaxAbsScaler, RobustScaler
 from sklearn.neighbors import KernelDensity
 import seaborn as sns
-from scipy import stats
 
-# from models.utils importdd set_seed, save_model, load_model
 import models.utils as model_utils
-
-from rnn import SimpleRNN
-
 import data_utils.utils as data_utils
+from models.sensei import Sensei
 
 model_utils.set_seed(42)
 plt.style.use('ggplot')
@@ -95,25 +87,9 @@ def train(model, n_epochs, train_loader, val_loader=None):
 
     return model.eval(), history
 
-def get_model(model, model_params):
-    models = {
-        "rnn": SimpleRNN,
-    }
-    return models.get(model.lower())(**model_params)
 
 
-def get_scaler(scaler):
-    scalers = {
-        "minmax": lambda: MinMaxScaler(feature_range=(0 ,1)),
-        "identity": lambda: FunctionTransformer(lambda x: x),
-        "standard": StandardScaler,
-        "maxabs": MaxAbsScaler,
-        "robust": RobustScaler,
-    }
-    return scalers.get(scaler.lower())()
-
-
-def evaluate(model, test_loader, scaler=get_scaler('identity'), criterion=lambda:torch.nn.L1Loss(reduction=sum)):
+def evaluate(model, test_loader, scaler=model_utils.get_scaler('identity'), criterion=lambda:torch.nn.L1Loss(reduction=sum)):
     predictions = []
     values = []
 
@@ -141,23 +117,6 @@ def plot(dataset, test_idx, y_test, y_hat, title="result"):
     ax.set_title(title)
     plt.legend()
     plt.tight_layout()
-    # plt.show()
-
-
-def show_table_params():
-    global table
-    table, ax = plt.subplots()
-    plt.figure(3)
-    table.set_size_inches(8, 2)
-    # hide axes
-    table.patch.set_visible(False)
-    ax.axis('off')
-    ax.axis('tight')
-    df = pd.DataFrame(np.column_stack([input_size, output_size, N_EPOCHS, lr, batch_size, hidden_dim, n_layers, af]),
-                      columns=['in_size', 'out_size', 'n_epochs', 'lr', 'batch_size', 'hidden_dim', 'n_layers',
-                               'act. fn.'])
-    ax.table(cellText=df.values, colLabels=df.columns, loc='center')
-    table.tight_layout()
     # plt.show()
 
 
@@ -223,7 +182,7 @@ def detect_anomalies(model, train_data, test_data, kde=True):
 
     anomalies_count = sum(l >= THRESHOLD for l in losses_test)
     print(f'Number of anomalies found: {anomalies_count}')
-    anomalies_idxs = np.argwhere(losses_test >= THRESHOLD) + n_train
+    anomalies_idxs = np.argwhere(losses_test <= THRESHOLD) + n_train
     return anomalies_idxs
 
 
@@ -233,14 +192,16 @@ if __name__ == "__main__":
     input_size = 72  # window size
     output_size = 1
 
-    N_EPOCHS = 1000
+    N_EPOCHS = 10
 
-    lr = 0.001
+    lr = 0.01
     batch_size = 32
     hidden_dim = 10
-    n_layers = 3
+    n_layers = 1
     af = 'tanh'
     dropout = 0
+    weight_decay = 1e-6
+
 
     model_params = {
                     'input_size': input_size,
@@ -248,13 +209,14 @@ if __name__ == "__main__":
                     'hidden_dim': hidden_dim,
                     'n_layers': n_layers,
                     'af': af,
-                    'dropout': dropout
+                    'dropout': dropout,
                     }
 
     training_params = {
         'n_epochs': N_EPOCHS,
         'lr': lr,
-        'batch_size': batch_size
+        'batch_size': batch_size,
+        'weight_decay': weight_decay
     }
 
     val_set = True
@@ -264,30 +226,41 @@ if __name__ == "__main__":
     data_utils.plot_hexagon_location_by_id(hidx)
     # plt.show()
 
-    scaler = get_scaler('minmax')
-    # show_table_params()
+    scaler = model_utils.get_scaler('minmax')
 
     # 1. get data
-    original, scaled, n_train, anomaly_start, anomaly_stop = data_utils.get_data(d, scaler=scaler, hidx=hidx)
+    original, scaled, n_train, anomaly_start, anomaly_stop, name = data_utils.get_data(d, scaler=scaler, hidx=hidx)
 
     # 2. get dataloaders
     train_loader, train_loader_one, test_loader, test_loader_one, val_loader, train_X \
         = model_utils.get_dataloaders(scaled, batch_size, input_size, output_size, n_train=n_train, val_set=val_set)
 
     # 3. get_model
-    rnn = get_model('rnn', model_params)
+    model = model_utils.get_model('rnn', model_params)
 
     # 4. train
     # trained, history = train(rnn, N_EPOCHS, train_loader, val_loader=val_loader)
     # model_utils.save_model(trained, history, model_params, training_params, d, hidx, val_set=val_set)
-
     # or use trained one
     trained = model_utils.load_model()
 
-    # 5. evaluate
-    y_test, y_hat = evaluate(trained, test_loader_one, scaler)
-    y_train, y_hat_train = evaluate(trained, train_loader_one, scaler)
-    plot(original, 0, y_train, y_hat_train, title="training")
+    #
+    # # 5. evaluate
+    # y_test, y_hat = evaluate(trained, test_loader_one, scaler)
+    # y_train, y_hat_train = evaluate(trained, train_loader_one, scaler)
+    # plot(original, 0, y_train, y_hat_train, title="training")
+
+    # # 4s.
+    # loss_fn = torch.nn.MSELoss(reduction="mean")
+    # optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    # s = Sensei(model, optimizer, loss_fn)
+    #
+    # # 5s.
+    # trained, history = s.train(N_EPOCHS, train_loader, val_loader)
+    # s.plot_losses()
+    y_test, y_hat = s.evaluate(
+        test_loader=test_loader_one
+    )
 
     y_test = scaler.inverse_transform(y_test)
     y_hat = scaler.inverse_transform(y_hat)
@@ -305,3 +278,5 @@ if __name__ == "__main__":
     print('done')
     # ----- /anomaly detection ------
     plt.show()
+
+

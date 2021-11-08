@@ -6,8 +6,9 @@ from pathlib import PurePath, Path
 import numpy as np
 import pandas as pd
 import torch
-from matplotlib import pyplot as plt
+from sklearn.preprocessing import MinMaxScaler, FunctionTransformer, StandardScaler, MaxAbsScaler, RobustScaler
 from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from models.simple_rnn.rnn import SimpleRNN
 
@@ -150,6 +151,23 @@ def get_model_by_name(name):
     rnn = SimpleRNN(*model_params)
     return rnn
 
+
+def get_model(model, model_params):
+    models = {
+        "rnn": SimpleRNN,
+    }
+    return models.get(model.lower())(**model_params)
+
+
+def get_scaler(scaler):
+    scalers = {
+        "minmax": lambda: MinMaxScaler(feature_range=(0 ,1)),
+        "identity": lambda: FunctionTransformer(lambda x: x),
+        "standard": StandardScaler,
+        "maxabs": MaxAbsScaler,
+        "robust": RobustScaler,
+    }
+    return scalers.get(scaler.lower())()
 
 
 def test_train_split_by_idx(df, idx):

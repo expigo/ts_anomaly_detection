@@ -11,6 +11,8 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from models.simple_rnn.rnn import SimpleRNN
+from models.lstm.lstm import LSTMModel
+from models.gru.gru import GRUModel
 
 
 def get_project_root() -> Path:
@@ -49,6 +51,9 @@ def ts_to_supervised(data, n_in=1, n_out=1, dropnan=True):
     Pandas DataFrame of series framed for supervised learning.
 
     """
+
+    n_in = int(n_in)
+    n_out = int(n_out)
     n_vars = 1 if type(data) is list else data.shape[1]
     df = pd.DataFrame(data)
     cols, names = list(), list()
@@ -155,6 +160,8 @@ def get_model_by_name(name):
 def get_model(model, model_params):
     models = {
         "rnn": SimpleRNN,
+        "lstm": LSTMModel,
+        "gru": GRUModel
     }
     return models.get(model.lower())(**model_params)
 
@@ -196,6 +203,8 @@ def get_dataloaders(data, batch_size, input_size, output_size, val_set=True, n_t
     Returns:
     Create data loader and the index of dataset split
     """
+
+    batch_size = int(batch_size)
 
     # create windows and prepare for batching
     labeled = ts_to_supervised(data, input_size, output_size, dropnan=True)

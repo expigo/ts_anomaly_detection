@@ -234,3 +234,4 @@ trained_models
 
 # drafts and stuff
 playground*.py
+**/**.gif

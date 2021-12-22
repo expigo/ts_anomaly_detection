@@ -74,7 +74,6 @@ class Sensei:
         return self.model.eval(), history
 
     def evaluate(self, test_loader):
-        from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
         predictions = []
         values = []
 
@@ -89,15 +88,12 @@ class Sensei:
                 predictions.append(y_hat)
                 values.append(y)
 
-        values = np.array(values).reshape(-1, 1)
-        predictions = np.array(predictions).reshape(-1, 1)
-
-        return values, predictions
+        return np.array(values).reshape(-1, 1), np.array(predictions).reshape(-1, 1)
 
     def plot_losses(self):
         plt.plot(self.history['train'], label="Training loss")
         plt.plot(self.history['val'], label="Validation loss")
         plt.legend()
         plt.title("Losses")
-        # plt.show()
-        # plt.close()
+        plt.show()
+        plt.close()

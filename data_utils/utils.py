@@ -56,7 +56,7 @@ def get_hexagon_ts_by_id(id, data_dir_path=get_data_dir_path()) -> (np.array, in
            split_index, anomaly_start_idx, anomaly_stop_idx, original_id
 
 
-def plot_hexagon_location_by_id(id, vlines=[]):
+def plot_hexagon_location_by_id(id, vlines=[], show=False):
     data, split_index, anomaly_start_idx, anomaly_stop_idx, original_id = get_hexagon_ts_by_id(id)
 
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -67,6 +67,16 @@ def plot_hexagon_location_by_id(id, vlines=[]):
 
     ax.set_title(f'location {original_id}\n split @ {split_index}')
     plt.legend()
+    if show:
+        plt.show()
+
+
+import matplotlib
+matplotlib.use("TkAgg")
+
+# 90 is interesting but big
+plot_hexagon_location_by_id(22, show=True)
+
 
 def get_chosen_hexagon_ids():
     return [
@@ -102,7 +112,7 @@ def get_hexagon_descriptions(ids=[]):
 
     joined = pd.concat(descriptions_dfs, axis=1)
     joined.columns = ids
-    return joined
+    return joined.T
 
 
 

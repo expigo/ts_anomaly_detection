@@ -13,7 +13,11 @@ import data_utils.utils as data_utils
 from models.sensei import Sensei
 
 model_utils.set_seed(42)
-plt.style.use('ggplot')
+plt.style.use('bmh')
+
+
+# import matplotlib
+# matplotlib.use("TkAgg")
 
 
 def train(model, n_epochs, train_loader, val_loader=None):
@@ -107,13 +111,20 @@ def evaluate(model, test_loader, scaler=model_utils.get_scaler('identity'), crit
     return np.array(values).reshape(-1, 1), np.array(predictions).reshape(-1, 1)
 
 
-def plot(dataset, test_idx, y_test, y_hat, title="result"):
+def plot(dataset, test_idx, y_test, y_hat, start, stop, anomalies_found, input_size, title="result"):
     X = np.arange(test_idx, len(y_test)+test_idx)
     fig, ax = plt.subplots(figsize=(12, 6))
     # ax.scatter(x=X, y=y_test, label='y')
     # ax.scatter(x=X, y=y_hat, label='y_hat')
-    ax.plot(X, y_test, label='y')
-    ax.plot(X, y_hat, label='y_hat')
+
+    ax.axvspan(start, stop, alpha=0.2, color='salmon', label='anomaly occurrence area')
+    ax.scatter(x=anomalies_found, y=y_test[anomalies_found-test_idx],
+               marker='x', c='black', label='anomalies found')
+    # ax.scatter(x=anomalies_found, y=dataset[anomalies_found+input_size],
+    #            marker='x', c='purple', label='anomalies found - input_sizex')
+    # ax.plot(dataset[input_size:], label="dataset")
+    ax.plot(X, y_test, label='ground truth')
+    ax.plot(X, y_hat, label='predictions')
     ax.set_title(title)
     plt.legend()
     plt.tight_layout()
@@ -128,7 +139,8 @@ def reconstruct_ts(model, dataloder):
     #                        y_train_one.detach().numpy().ravel())
 
     predictions = []
-    criterion = torch.nn.L1Loss(reduction='sum')
+    # criterion = torch.nn.L1Loss(reduction='sum')
+    criterion = torch.nn.MSELoss(reduction='sum')
     losses = []
     for x, y in dataloder:
         model = model.eval()
@@ -140,7 +152,7 @@ def reconstruct_ts(model, dataloder):
     return np.array(predictions), np.array(losses)
 
 
-def get_threshold(losses: np.array, kde=False) -> float:
+def get_threshold(losses: np.array, kde=False):
     bins = np.linspace(losses.min(), losses.max(), 50)
     bin_nums = np.digitize(losses, bins) - 1
     hist_vals = np.bincount(bin_nums)
@@ -180,7 +192,7 @@ def detect_anomalies(model, train_data, test_data, kde=True):
     if kde:
         losses_test = kde_test.score_samples(losses_test.reshape(-1, 1))
 
-    anomalies_count = sum(l >= THRESHOLD for l in losses_test)
+    anomalies_count = sum(l <= THRESHOLD for l in losses_test)
     print(f'Number of anomalies found: {anomalies_count}')
     anomalies_idxs = np.argwhere(losses_test <= THRESHOLD) + n_train
     return anomalies_idxs
@@ -189,27 +201,176 @@ def detect_anomalies(model, train_data, test_data, kde=True):
 if __name__ == "__main__":
     # ------------- single --------------
 
-    input_size = 72  # window size
+    # input_size = 25  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 45
+    #
+    # lr = 0.08341537
+    # batch_size = 36
+    # hidden_dim = 23
+    # n_layers = 2
+    # af = 'tanh'
+    # dropout = 0
+    # weight_decay = 1e-6
+    #
+    # input_size = 33  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 40
+    #
+    # lr = 0.054969
+    # batch_size = 50
+    # hidden_dim = 10
+    # n_layers = 4
+    # af = 'tanh'
+    # dropout = 0
+    # weight_decay = 1e-6
+
+    # input_size = 83  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 29
+    #
+    # lr = 0.020273
+    # batch_size = 29
+    # hidden_dim = 3
+    # n_layers = 5
+    # af = 'tanh'
+    # dropout = 0
+    # weight_decay = 1e-6
+
+    # input_size = 100  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 12
+    #
+    # lr = 1.83015074e-02
+    # batch_size = 27
+    # hidden_dim = 10
+    # n_layers = 4
+    # af = 'tanh'
+    # dropout = 0
+    # weight_decay = 1e-6
+
+    # input_size = 53  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 50
+    #
+    # lr = 1.61063959e-02
+    # batch_size = 59
+    # hidden_dim = 2
+    # n_layers = 1
+    # af = 'tanh'
+    # dropout = 0
+    # weight_decay = 1e-6
+
+    # relu
+    # input_size = 100  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 11
+    #
+    # lr = 3.94962999e-02
+    # batch_size = 64
+    # hidden_dim = 4
+    # n_layers = 3
+    # af = 'relu'
+    # dropout = 0
+    # weight_decay = 1e-6
+
+    # input_size = 53  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 1000
+    #
+    # lr = 2.29187947e-03
+    # batch_size = 4
+    # hidden_dim = 1
+    # n_layers = 1
+    # af = 'relu'
+    # dropout = 0
+    # weight_decay = 1e-6
+
+    #
+    # input_size = 68  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 50
+    #
+    # lr = 1.17195672e-03
+    # batch_size = 8
+    # hidden_dim = 1
+    # n_layers = 1
+    # af = 'relu'
+    # dropout = 0
+    # weight_decay = 1e-6
+
+    # gru # veru good!
+    # input_size = 68  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 1000
+    #
+    # lr = 1.17195672e-03
+    # batch_size = 8
+    # hidden_dim = 1
+    # n_layers = 1
+    # af = 'relu'
+    # dropout = 0
+    # weight_decay = 1e-6
+
+    # gru  # even better!
+    # !!!! [4] MSE sum, gru
+    input_size = 83  # window size
     output_size = 1
 
-    N_EPOCHS = 10
+    N_EPOCHS = 50
 
-    lr = 0.01
-    batch_size = 32
-    hidden_dim = 10
+    lr = 3.78994644e-03
+    batch_size = 4
+    hidden_dim = 1
     n_layers = 1
-    af = 'tanh'
+    af = 'relu'
     dropout = 0
     weight_decay = 1e-6
 
+    # rnn [34]
+    # input_size = 50  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 200
+    #
+    # lr = 9.03748016e-02
+    # batch_size = 64
+    # hidden_dim = 3
+    # n_layers = 1
+    # af = 'relu'
+    # dropout = 0
+    # weight_decay = 1e-6
+
+    # gru [34]
+    # input_size = 61  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 200
+    #
+    # lr = 3.62116054e-02
+    # batch_size = 53
+    # hidden_dim = 6
+    # n_layers = 1
+    # af = 'relu'
+    # dropout = 0
+    # weight_decay = 1e-6
 
     model_params = {
                     'input_size': input_size,
                     'output_size': output_size,
                     'hidden_dim': hidden_dim,
                     'n_layers': n_layers,
-                    'af': af,
-                    'dropout': dropout,
+                    # 'af': af,
+                    'dropout_prob': dropout,
                     }
 
     training_params = {
@@ -236,28 +397,32 @@ if __name__ == "__main__":
         = model_utils.get_dataloaders(scaled, batch_size, input_size, output_size, n_train=n_train, val_set=val_set)
 
     # 3. get_model
-    model = model_utils.get_model('rnn', model_params)
+    model = model_utils.get_model('gru', model_params)
+    # rnn = model_utils.get_model('rnn', model_params)
 
-    # 4. train
+    # # 4. train
     # trained, history = train(rnn, N_EPOCHS, train_loader, val_loader=val_loader)
     # model_utils.save_model(trained, history, model_params, training_params, d, hidx, val_set=val_set)
-    # or use trained one
-    trained = model_utils.load_model()
-
+    # # or use trained one
+    # # trained = model_utils.load_model()
     #
-    # # 5. evaluate
+    # #
+    # # # 5. evaluate
     # y_test, y_hat = evaluate(trained, test_loader_one, scaler)
     # y_train, y_hat_train = evaluate(trained, train_loader_one, scaler)
     # plot(original, 0, y_train, y_hat_train, title="training")
 
-    # # 4s.
-    # loss_fn = torch.nn.MSELoss(reduction="mean")
-    # optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    # s = Sensei(model, optimizer, loss_fn)
-    #
-    # # 5s.
-    # trained, history = s.train(N_EPOCHS, train_loader, val_loader)
-    # s.plot_losses()
+    # 4s.
+    loss_fn = torch.nn.MSELoss(reduction="sum")
+    # loss_fn = torch.nn.L1Loss(reduction="sum")
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    s = Sensei(model, optimizer, loss_fn)
+
+    # 5s.
+    trained, history = s.train(N_EPOCHS, train_loader, val_loader)
+
+    # s, trained = Sensei.from_trained('model_20211022-152944')
+
     y_test, y_hat = s.evaluate(
         test_loader=test_loader_one
     )
@@ -270,13 +435,18 @@ if __name__ == "__main__":
     r2 = r2_score(y_test, y_hat)
     print(mae, rmse, r2)
 
-    plot(original, n_train, y_test, y_hat, title="test")
     # ----- anomaly detection ------
-    anomalies_idx = detect_anomalies(trained, train_loader_one, test_loader_one, kde=.1)
+    anomalies_idx = detect_anomalies(trained, train_loader_one, test_loader_one) #, kde=.1)
     print(anomalies_idx)
     print(f'indicies should be in closed range: [{anomaly_start}, {anomaly_stop}]')
     print('done')
     # ----- /anomaly detection ------
-    plt.show()
+
+    plot(original, n_train, y_test, y_hat, title="test",
+         start=anomaly_start, stop=anomaly_stop, anomalies_found=anomalies_idx, input_size=input_size)
+    # s.plot_losses()
+
+
+plt.show()
 
 

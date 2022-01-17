@@ -9,7 +9,7 @@ class LSTMModel(torch.nn.Module):
                            of LSTMs to our desired output shape.
 
     """
-    def __init__(self, input_size, hidden_dim, n_layers, output_size, dropout_prob):
+    def __init__(self, input_size, hidden_dim, n_layers, output_size, dropout_prob=0.0, af='tanh'):
         """The __init__ method that initiates a LSTM instance.
 
         Args:
@@ -22,6 +22,11 @@ class LSTMModel(torch.nn.Module):
         """
         super(LSTMModel, self).__init__()
 
+        input_size = int(input_size)
+        hidden_dim = int(hidden_dim)
+        n_layers = int(n_layers)
+        output_size = int(output_size)
+
         self.hidden_dim = hidden_dim
         self.layer_dim = n_layers
 
@@ -30,6 +35,7 @@ class LSTMModel(torch.nn.Module):
         )
 
         self.fc = torch.nn.Linear(hidden_dim, output_size)
+        # print(self.fc.weight)
 
     def forward(self, x, hidden):
         """The forward method takes input tensor x and does forward propagation

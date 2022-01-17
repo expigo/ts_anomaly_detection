@@ -1,8 +1,8 @@
 import numpy as np
 
-from hpo.vector import Vector
+from pso.vector import Vector
 
-rng = np.random.default_rng()
+rng = np.random.default_rng(42)
 
 
 class Particle:

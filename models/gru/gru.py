@@ -9,7 +9,7 @@ class GRUModel(torch.nn.Module):
                            of GRUs to our desired output shape.
 
     """
-    def __init__(self, input_size, hidden_dim, n_layers, output_size, dropout_prob):
+    def __init__(self, input_size, hidden_dim, n_layers, output_size, dropout_prob=0, af='tanh'):
         """The __init__ method that initiates a GRU instance.
 
         Args:
@@ -21,6 +21,12 @@ class GRUModel(torch.nn.Module):
 
         """
         super(GRUModel, self).__init__()
+
+        input_size = int(input_size)
+        hidden_dim = int(hidden_dim)
+        n_layers = int(n_layers)
+        output_size = int(output_size)
+
         self.layer_dim = n_layers
         self.hidden_dim = hidden_dim
 

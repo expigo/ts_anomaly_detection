@@ -13,6 +13,7 @@ class Sensei:
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.history = dict(train=[], val=[])
+        # TODO: bring scaler info here
 
     def from_trained(self, name:str=None):
         return self, u.load_model(None, name)

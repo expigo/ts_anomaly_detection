@@ -2,7 +2,7 @@ import numpy as np
 from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 
-from hpo.particle import Particle
+from pso.particle import Particle
 
 
 class PSO:

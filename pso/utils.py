@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 import matplotlib.animation as animation
 
-from hpo.pso import PSO
+from pso import PSO
 
 
 cmap = [(0, '#2f9599'), (0.45, '#eeeeee'), (1, '#8800ff')]

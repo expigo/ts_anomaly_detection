@@ -10,7 +10,7 @@ import torch
 from matplotlib import pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import MinMaxScaler, FunctionTransformer
+from sklearn.preprocessing import MinMaxScaler, FunctionTransformer, StandardScaler, MaxAbsScaler, RobustScaler
 from sklearn.neighbors import KernelDensity
 import seaborn as sns
 
@@ -71,11 +71,14 @@ def plot_hexagon_location_by_id(id, vlines=[], show=False):
         plt.show()
 
 
+# plot_hexagon_location_by_id(5, show=True)
+
+
 import matplotlib
-matplotlib.use("TkAgg")
+# matplotlib.use("TkAgg")
 
 # 90 is interesting but big
-plot_hexagon_location_by_id(22, show=True)
+# plot_hexagon_location_by_id(27, show=True)
 
 
 def get_chosen_hexagon_ids():
@@ -115,13 +118,10 @@ def get_hexagon_descriptions(ids=[]):
     return joined.T
 
 
-
-
 def get_passengers_data():
     print(os.getcwd())
     return pd.read_csv(get_data_dir_path().joinpath('misc/airline-passengers.csv'), sep=',', header=0)
     # return np.genfromtxt('../data/misc/airline-passengers.csv', delimiter=',')
-
 
 
 class Dataset(Enum):
@@ -174,3 +174,12 @@ def get_data(d=Dataset.LINREG, test_size=None, dim=1, hidx=None, scaler=MinMaxSc
     return data, scaled, n_train, anomaly_start, anomaly_stop, name
 
 
+def get_scaler(scaler):
+    scalers = {
+        "minmax": lambda: MinMaxScaler(feature_range=(0, 1)),
+        "identity": lambda: FunctionTransformer(lambda x: x),
+        "standard": StandardScaler,
+        "maxabs": MaxAbsScaler,
+        "robust": RobustScaler,
+    }
+    return scalers.get(scaler.lower())()

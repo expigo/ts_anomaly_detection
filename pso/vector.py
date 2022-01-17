@@ -1,7 +1,10 @@
 import numpy as np
 from numpy.random import default_rng
 
+import torch
 rng = default_rng(42)
+# np.random.seed(42)
+
 
 
 class DiscreteVariable:
@@ -273,17 +276,17 @@ class Vector:
         for d in definition:
             # low, high, type = d
             n = d["repeat"] if "repeat" in d else 1
-            if d["type"] == "continuous":
+            if d["space"] == "continuous":
                 low = d["low"]
                 high = d["high"]
                 for i in range(n):
                     v.append(ContinuousVariable(low=low, high=high))
-            elif d["type"] == "discrete":
+            elif d["space"] == "discrete":
                 low = d["low"]
                 high = d["high"]
                 for i in range(n):
                     v.append(DiscreteVariable(low=low, high=high))
-            elif d["type"] == "constant":
+            elif d["space"] == "constant":
                 value = d["value"]
                 for i in range(n):
                     v.append(Constant(value))
@@ -296,12 +299,12 @@ class Vector:
             {
                 "low": -100,
                 "high": 100,
-                "type": "continuous",
+                "space": "continuous",
             },
             {
                 "low": -100,
                 "high": 100,
-                "type": "continuous",
+                "space": "continuous",
             },
         ])
 

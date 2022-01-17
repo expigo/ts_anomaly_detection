@@ -10,7 +10,8 @@ import seaborn as sns
 
 import models.utils as model_utils
 import data_utils.utils as data_utils
-from models.sensei import Sensei
+# from models.sensei import Sensei
+import sensei as se
 
 import matplotlib
 matplotlib.use("TkAgg")
@@ -30,8 +31,8 @@ def plot(dataset, test_idx, y_test, y_hat, title="result"):
 
 
 d = data_utils.Dataset.HEXAGON
-hidx = 22
-data_utils.plot_hexagon_location_by_id(hidx)
+hidx = 4
+# data_utils.plot_hexagon_location_by_id(hidx)
 # plt.show()
 
 scaler = model_utils.get_scaler('minmax')
@@ -76,7 +77,7 @@ def train_evaluate(hps):
     val_set = True
 
     # 2. get dataloaders
-    train_loader, train_loader_one, test_loader, test_loader_one, val_loader, train_X \
+    train_loader, train_loader_one, test_loader, test_loader_one, val_loader, val_loader_one, train_X \
         = model_utils.get_dataloaders(scaled, batch_size, input_size, output_size, n_train=n_train, val_set=val_set)
 
     # 3. get_model
@@ -99,7 +100,7 @@ def train_evaluate(hps):
     # loss_fn = torch.nn.MSELoss(reduction="mean")
     # loss_fn = torch.nn.L1Loss(reduction="sum")
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    s = Sensei(model, optimizer, loss_fn)
+    s = se.Sensei(model, optimizer, loss_fn)
 
     # 5s.
     trained, history = s.train(N_EPOCHS, train_loader, val_loader)
@@ -107,8 +108,8 @@ def train_evaluate(hps):
 
     # s, trained = Sensei.from_trained('model_20211022-152944')
     #
-    y_test, y_hat = s.evaluate(
-        test_loader=train_loader_one
+    y_test, y_hat, metrics = s.evaluate(
+        test_loader=val_loader_one
     )
 
     y_test = scaler.inverse_transform(y_test)
@@ -119,10 +120,10 @@ def train_evaluate(hps):
     r2 = r2_score(y_test, y_hat)
     # print(mae, rmse, r2)
 
-    return mae
+    return rmse
 
 
-from hpo.pso import PSO
+from pso.pso import PSO
 
 # af = 'tanh'
 dropout = 0
@@ -135,37 +136,37 @@ position, fitness = pso.run(fitness_fn=lambda X: train_evaluate(X),
                                 space=[{
                                 "low": 50,  # input_dim
                                 "high": 100,
-                                "type": "discrete",
+                                "space": "discrete",
                                 "repeat": 1
                             },
                             {
-                                "low": 100,  # number of epochs
-                                "high": 200,
-                                "type": "discrete",
+                                "low": 50,  # number of epochs
+                                "high": 100,
+                                "space": "discrete",
                                 "repeat": 1
                             },
                                 {
                                     "low": 1e-8,  # lr
                                     "high": .1,
-                                    "type": "continuous",
+                                    "space": "continuous",
                                     "repeat": 1
                                 },
                                 {
                                     "low": 4,  # batch size
                                     "high": 128,
-                                    "type": "discrete",
+                                    "space": "discrete",
                                     "repeat": 1
                                 },
                                 {
                                     "low": 1,  # hidden_dim
                                     "high": 32,
-                                    "type": "discrete",
+                                    "space": "discrete",
                                     "repeat": 1
                                 },
                                 {
                                     "low": 1,  # n_layers
                                     "high": 32,
-                                    "type": "discrete",
+                                    "space": "discrete",
                                     "repeat": 1
                                 },
                             ])

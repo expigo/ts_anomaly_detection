@@ -219,7 +219,6 @@ def detect_anomalies(model, train_data, test_data, kde=True):
     plt.title(f'Scores and Foundings')
     plt.legend()
     plt.show()
-
     # TP = set.intersection(set(anomalies_idx.ravel()),set(np.arange(anomaly_start, anomaly_stop)))
     # TP = len(TP) / np.arange(anomaly_start, anomaly_stop).shape[0]
     #
@@ -354,19 +353,19 @@ if __name__ == "__main__":
     # weight_decay = 1e-6
 
     # gru  # even better!
-    # !!!! [4] MSE sum, gru
-    input_size = 83  # window size
-    output_size = 1
-
-    N_EPOCHS = 50
-
-    lr = 3.78994644e-03
-    batch_size = 4
-    hidden_dim = 1
-    n_layers = 1
-    af = 'relu'
-    dropout = 0
-    weight_decay = 1e-6
+    # # !!!! [4] MSE sum, gru
+    # input_size = 83  # window size
+    # output_size = 1
+    #
+    # N_EPOCHS = 50
+    #
+    # lr = 3.78994644e-03
+    # batch_size = 4
+    # hidden_dim = 1
+    # n_layers = 1
+    # af = 'relu'
+    # dropout = 0
+    # weight_decay = 1e-6
 
     # rnn [34]
     # input_size = 50  # window size
@@ -509,7 +508,7 @@ if __name__ == "__main__":
     # dropout = 0
     # weight_decay = 1e-6
 
-    # # # !!!! [28] MSE sum, gru
+    # # !!!! [28] MSE sum, gru
     # input_size = 50  # window size
     # output_size = 1
     #
@@ -609,48 +608,19 @@ if __name__ == "__main__":
     # dropout = 0
     # weight_decay = 1e-6
 
-    # # TESTT lstm
-    # input_size = 15  # window size
-    # output_size = 1
-    #
-    # N_EPOCHS = 49
-    #
-    # lr = 0.0697368059322561
-    # batch_size = 58
-    # hidden_dim = 25
-    # n_layers = 21
-    # af = 'relu'
-    # dropout = 0
-    # weight_decay = 0
+    # TESTT lstm
+    input_size = 15  # window size
+    output_size = 1
 
+    N_EPOCHS = 49
 
-    # [28] lstm, biiig pso
-    # input_size = 50  # window size
-    # output_size = 1
-    #
-    # N_EPOCHS = 500
-    #
-    # lr = 2.720207e-02
-    # batch_size = 119
-    # hidden_dim = 12
-    # n_layers = 1
-    # af = 'relu'
-    # dropout = 0
-    # weight_decay = 1e-6
-
-    # # pso_hpo [4]
-    # input_size = 38  # window size
-    # output_size = 1
-    #
-    # N_EPOCHS = 407
-    #
-    # lr = 0.018817
-    # batch_size = 92
-    # hidden_dim = 22
-    # n_layers = 1
-    # af = 'relu'
-    # dropout = 0
-    # weight_decay = 0
+    lr = 0.0697368059322561
+    batch_size = 58
+    hidden_dim = 25
+    n_layers = 21
+    af = 'relu'
+    dropout = 0
+    weight_decay = 0
 
     model_params = {
                     'input_size': input_size,
@@ -685,7 +655,7 @@ if __name__ == "__main__":
         = model_utils.get_dataloaders(scaled, batch_size, input_size, output_size, n_train=n_train, val_set=val_set)
 
     # 3. get_model
-    model = model_utils.get_model('gru', model_params)
+    model = model_utils.get_model('lstm', model_params)
     # rnn = model_utils.get_model('rnn', model_params)
 
     # # 4. train
@@ -701,8 +671,8 @@ if __name__ == "__main__":
     # plot(original, 0, y_train, y_hat_train, title="training")
 
     # 4s.
-    loss_fn = torch.nn.MSELoss(reduction="mean")
-    # loss_fn = torch.nn.L1Loss(reduction="mean")
+    loss_fn = torch.nn.MSELoss(reduction="sum")
+    # loss_fn = torch.nn.L1Loss(reduction="sum")
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     s = Sensei(model, optimizer, loss_fn)
 

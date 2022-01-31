@@ -47,10 +47,10 @@ sensei.evaluate(test_loader=dataloaders.test_loader_one,
 sensei.evaluate(test_loader=dataloaders.train_loader_one,
                          plot=True, title="Train Set Regression", scaler=ts.scaler)
 
-anomalies_idx = sensei.detect_anomalies(ts,
-                                        dataloaders.train_loader_one,
-                                        dataloaders.test_loader_one,
-                                        input_size=hps['input_size'],)
+anomalies_idx = sensei.detect_anomalies_train_set_based_threshold(ts,
+                                                                  dataloaders.train_loader_one,
+                                                                  dataloaders.test_loader_one,
+                                                                  input_size=hps['input_size'], )
 # kde=False)
 
 print(anomalies_idx)

@@ -33,8 +33,14 @@ def get_all_filenames(data_dir_path: Path) -> dict:
     return filenames
 
 
-def get_all_dirnames(data_dir_path: Path) -> dict:
+def get_all_dirnames(data_dir_path: Path, absolute=False) -> dict:
     dir_names = next(os.walk(data_dir_path), (None, None, []))[1]
+    if absolute:
+        abs_dir_names = []
+        for d in dir_names:
+            abs_dir_names.append(data_dir_path.joinpath(d))
+        dir_names = abs_dir_names
+
     return dir_names
 
 
@@ -70,15 +76,20 @@ def plot_hexagon_location_by_id(id, vlines=[], show=False):
     if show:
         plt.show()
 
-
-# plot_hexagon_location_by_id(5, show=True)
-
+# 126
+plot_hexagon_location_by_id(109, show=True)
 
 import matplotlib
-# matplotlib.use("TkAgg")
+matplotlib.use("TkAgg")
 
 # 90 is interesting but big
-# plot_hexagon_location_by_id(27, show=True)
+# 151
+# 153
+# 77 single anomaly (200 as well)
+# 79 hm
+# do 127! -> missing crest
+# 157
+# plot_hexagon_location_by_id(151, show=True)
 
 
 def get_chosen_hexagon_ids():
@@ -183,3 +194,4 @@ def get_scaler(scaler):
         "robust": RobustScaler,
     }
     return scalers.get(scaler.lower())()
+#%%

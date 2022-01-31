@@ -31,6 +31,7 @@ def get_all_filenames(data_dir_path: Path) -> dict:
     filenames = next(os.walk(data_dir_path), (None, None, []))[2]
     return filenames
 
+
 def get_all_dirnames(data_dir_path: Path) -> dict:
     dir_names = next(os.walk(data_dir_path), (None, None, []))[1]
     return dir_names
@@ -88,8 +89,8 @@ def set_seed(seed=42):
 
 
 def save_model(model, history: dict, model_params, training_params, d=None, hidx=None,
-               root='', name:str ='model_' + datetime.now().strftime("%Y%m%d-%H%M%S"),
-               val_set:bool=True):
+               root='', name: str = 'model_' + datetime.now().strftime("%Y%m%d-%H%M%S"),
+               val_set: bool = True):
     root = get_trained_models_dir_path().joinpath(root)
     path = root.joinpath(name).joinpath('model')
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,19 +111,19 @@ def save_model(model, history: dict, model_params, training_params, d=None, hidx
         "val_set_used": val_set
     }
     pd.DataFrame(model_params | training_params | data_params, index=[name]).to_csv(registry_path,
-                                                                      mode='a+',
-                                                                      header=not os.path.exists(registry_path),
-                                                                      index=[0])
-
+                                                                                    mode='a+',
+                                                                                    header=not os.path.exists(
+                                                                                        registry_path),
+                                                                                    index=[0])
 
     pd.DataFrame.from_dict(history).to_csv(path.parent.joinpath('loss_history.csv'), sep=',', index=False)
 
-
     torch.save(model.state_dict(), path)
 
+
 def save_model_with_hps(model, history: dict, model_info, model_params, training_params, dataset_desc,
-                        root='', name:str = 'model_' + datetime.now().strftime("%Y%m%d-%H%M%S"),
-                        val_set:bool=True):
+                        root='', name: str = 'model_' + datetime.now().strftime("%Y%m%d-%H%M%S"),
+                        val_set: bool = True):
     root = get_trained_models_dir_path().joinpath(root)
     path = root.joinpath(name).joinpath('model')
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -132,7 +133,7 @@ def save_model_with_hps(model, history: dict, model_info, model_params, training
         print(f"epochs: {training_params['n_epochs']}", file=text_file)
         print(f'datasetype: {dataset_desc["dataset_type"]} ({dataset_desc["hexagon_id"]})', file=text_file)
         print(f"layers: {model_params['n_layers']}", file=text_file)
-        print(f"af: {model_info['activation_function']}", file=text_file)
+        print(f"af: {model_info['af']}", file=text_file)
         print(f"lr: {training_params['lr']}", file=text_file)
 
     registry_path = root.joinpath('registry.csv')
@@ -143,16 +144,15 @@ def save_model_with_hps(model, history: dict, model_info, model_params, training
         "val_set_used": val_set
     }
     pd.DataFrame(model_info | model_params | training_params | data_params, index=[name]).to_csv(registry_path,
-                                                                      mode='a+',
-                                                                      header=not os.path.exists(registry_path),
-                                                                      index=[0])
-
+                                                                                                 mode='a+',
+                                                                                                 header=not os.path.exists(
+                                                                                                     registry_path),
+                                                                                                 index=[0])
 
     pd.DataFrame.from_dict(history).to_csv(path.parent.joinpath('loss_history.csv'), sep=',', index=False)
     #
     # ts, _ = TimeSeriesDataset.from_enum(dataset_desc["dataset_type"], dataset_desc["hexagon_id"], 'minmax')
     # pd.DataFrame.from_dict(history).to_csv(path.parent.joinpath('train'), sep=',', index=False)
-
 
     torch.save(model.state_dict(), path)
 
@@ -209,7 +209,7 @@ def load_model_from_hps(model=None, root=None, name=None):
     return model
 
 
-def get_all_models_from_dir(dir_name:str=''):
+def get_all_models_from_dir(dir_name: str = ''):
     all_models_path = get_trained_models_dir_path().joinpath(dir_name)
     model_dirs = get_all_dirnames(all_models_path)
 
@@ -225,7 +225,7 @@ def get_all_models_from_dir(dir_name:str=''):
         model.load_state_dict(trained_dict)
         models.append((model, model_params, train_params, loss_history))
 
-    return models
+    return models, model_dirs
 
 
 def get_model_by_name(name, root=None):
@@ -236,13 +236,17 @@ def get_model_by_name(name, root=None):
 
     model_type = registry.loc[[name], 'type'][0]
 
+    # model_params = registry.loc[[name],
+    #                             ['input_size', 'output_size', 'hidden_dim', 'n_layers', 'af']
+    # ].rename(columns={"activation_function": "af"}).T.to_dict()[name]
+
     model_params = registry.loc[[name],
-                     ['input_size', 'output_size', 'hidden_dim', 'n_layers', 'activation_function']
-        ].rename(columns={"activation_function": "af"}).T.to_dict()[name]
+                                ['input_size', 'output_size', 'hidden_dim', 'n_layers', 'af']
+    ].T.to_dict()[name]
 
     train_params = registry.loc[[name],
-                     ['batch_size', 'lr', 'n_epochs']
-        ].T.to_dict()[name]
+                                ['batch_size', 'lr', 'n_epochs', 'hexagon_id']
+    ].T.to_dict()[name]
 
     model = get_model(model_type, model_params)
 
@@ -260,7 +264,7 @@ def get_model(model, model_params):
 
 def get_scaler(scaler):
     scalers = {
-        "minmax": lambda: MinMaxScaler(feature_range=(0 ,1)),
+        "minmax": lambda: MinMaxScaler(feature_range=(0, 1)),
         "identity": lambda: FunctionTransformer(lambda x: x),
         "standard": StandardScaler,
         "maxabs": MaxAbsScaler,
@@ -280,11 +284,25 @@ class RMSELoss(torch.nn.Module):
         return loss
 
 
+"""
+From https://en.wikipedia.org/wiki/Coefficient_of_determination
+"""
+
+
+def r2Loss(output, target):
+    target_mean = torch.mean(target)
+    ss_tot = torch.sum((target - target_mean) ** 2)
+    ss_res = torch.sum((target - output) ** 2)
+    r2 = 1 - ss_res / ss_tot
+    return r2
+
+
 def get_loss_fn(fn_name, reduction="mean"):
     loss_functions = {
         "mae": torch.nn.L1Loss,
         "mse": torch.nn.MSELoss,
         "rmse": RMSELoss,
+        "r2": r2Loss
     }
     return loss_functions.get(fn_name.lower())(reduction=reduction)
 
@@ -371,7 +389,6 @@ def get_dataloaders(data, batch_size, input_size, output_size, val_set=True, n_t
                                                    drop_last=True
                                                    )
 
-
     test_loader = torch.utils.data.DataLoader(test,
                                               batch_size=batch_size,
                                               shuffle=False,
@@ -406,15 +423,14 @@ def get_dataloaders(data, batch_size, input_size, output_size, val_set=True, n_t
                                                  )
 
         val_loader_one = torch.utils.data.DataLoader(val,
-                                                 batch_size=batch_size,
-                                                 shuffle=True,
-                                                 num_workers=0,
-                                                 pin_memory=False,
-                                                 worker_init_fn=random.seed(42),
-                                                 drop_last=True
-                                                 )
+                                                     batch_size=batch_size,
+                                                     shuffle=True,
+                                                     num_workers=0,
+                                                     pin_memory=False,
+                                                     worker_init_fn=random.seed(42),
+                                                     drop_last=True
+                                                     )
         return train_loader, train_loader_one, test_loader, test_loader_one, val_loader, val_loader_one, train_X
     # -------------------------------------------------------
 
     return train_loader, train_loader_one, test_loader, test_loader_one, None, None, train_X
-

@@ -24,6 +24,8 @@ class TimeSeriesDataset:
         self.n_train = n_train
         self.anomaly_start = anomaly_start
         self.anomaly_stop = anomaly_stop
+        # self.anomaly_start = anomaly_start - 1
+        # self.anomaly_stop = anomaly_stop - 1
 
     def get_scaled(self, scaler_name:str = None):
         return TimeSeriesDataset(data=self.data, name=self.name, n_train=self.n_train,
@@ -69,7 +71,7 @@ class TimeSeriesDataset:
         return index_test_train_split(idx, labeled_data, n_out, val_set)
 
     def get_dataloaders(self, batch_size, input_size, output_size=1, val_set=True, test_size: float = None,
-                        create_labels=True):
+                        create_labels=True, shuffle=False):
 
         batch_size = int(batch_size)
         input_size = int(input_size)
@@ -100,7 +102,7 @@ class TimeSeriesDataset:
 
             train_loader = torch.utils.data.DataLoader(train,
                                                        batch_size=batch_size,
-                                                       shuffle=False,
+                                                       shuffle=shuffle,
                                                        num_workers=0,
                                                        pin_memory=False,
                                                        worker_init_fn=worker_init_fn,
@@ -109,7 +111,7 @@ class TimeSeriesDataset:
 
             train_loader_one = torch.utils.data.DataLoader(train,
                                                            batch_size=1,
-                                                           shuffle=False,
+                                                           shuffle=shuffle,
                                                            num_workers=0,
                                                            pin_memory=False,
                                                            worker_init_fn=worker_init_fn,
@@ -118,31 +120,30 @@ class TimeSeriesDataset:
 
             test_loader = torch.utils.data.DataLoader(test,
                                                       batch_size=batch_size,
-                                                      shuffle=False,
+                                                      shuffle=shuffle,
                                                       num_workers=0,
                                                       pin_memory=False,
                                                       worker_init_fn=worker_init_fn,
                                                       drop_last=True
-
                                                       )
 
             test_loader_one = torch.utils.data.DataLoader(test,
                                                           batch_size=1,
-                                                          shuffle=False,
+                                                          shuffle=shuffle,
                                                           num_workers=0,
                                                           pin_memory=False,
                                                           worker_init_fn=worker_init_fn,
                                                           drop_last=True
                                                           )
 
-            if val_set:
+            if val_set:  # TODO oj kris
                 x_val = torch.Tensor(splits.val_X).unsqueeze(1)
                 y_val = torch.Tensor(splits.val_y).unsqueeze(1)
 
                 val = torch.utils.data.TensorDataset(x_val, y_val)
                 val_loader = torch.utils.data.DataLoader(val,
                                                          batch_size=batch_size,
-                                                         shuffle=True,
+                                                         shuffle=shuffle,
                                                          num_workers=0,
                                                          pin_memory=False,
                                                          worker_init_fn=worker_init_fn,
@@ -150,8 +151,8 @@ class TimeSeriesDataset:
                                                          )
 
                 val_loader_one = torch.utils.data.DataLoader(val,
-                                                             batch_size=batch_size,
-                                                             shuffle=True,
+                                                             batch_size=1,
+                                                             shuffle=shuffle,
                                                              num_workers=0,
                                                              pin_memory=False,
                                                              worker_init_fn=worker_init_fn,
@@ -195,11 +196,11 @@ def index_test_train_split(idx, labeled, n_out, val_set):
         test_ratio = min(test_ratio, 0.2)
         val_ratio = test_ratio / (1 - test_ratio)
         n_val = int(val_ratio * train_dataset_size)
-        train_X, train_y = train_X[:-n_val, :], train_y[:-n_val, :]
+        new_train_X, new_train_y = train_X[:-n_val, :], train_y[:-n_val, :]
         val_X, val_y = train_X[-n_val:, :], train_y[-n_val:, :]
         return splits(
-            train_X, test_X, val_X,
-            train_y, test_y, val_y
+            new_train_X, test_X, val_X,
+            new_train_y, test_y, val_y
         )
     return splits(
         train_X, test_X, None,

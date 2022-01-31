@@ -27,14 +27,18 @@ class Sensei:
         self.history_per_batch = dict(train=[], val=[])
 
     @staticmethod
-    def from_trained(model, loss_fn):
+    def from_trained(model, loss_fn, loss_history=None):
         # optimizer = torch.optim.Adam(model.parameters(), lr=self.hps['lr'])  #, weight_decay=hps['weight_decay'])
         loss_fn = u.get_loss_fn(loss_fn)
 
-        return Sensei(model, None, loss_fn)
+        sensei = Sensei(model, None, loss_fn)  # TODO: save optimizer state to checkpoint, then load it here
+
+        sensei.history_per_epoch = loss_history
+
+        return sensei
 
     def save_model(self, dataset_desc, model_info, hps, val_set: bool, root='',
-                   name:str = 'model_' + datetime.now().strftime("%Y%m%d-%H%M%S")):
+                   name: str = 'model_' + datetime.now().strftime("%Y%m%d-%H%M%S")):
         print('Saving the model...')
         name = u.save_model_with_hps(model=self.model,
                                      history=self.history_per_epoch,
@@ -48,7 +52,7 @@ class Sensei:
         print(f'The model has been saved! {name}')
 
     @staticmethod
-    def from_hps(self, model_name, hps: Hyperparams, train_loader, val_loader=None):
+    def from_hps(model_name, hps: Hyperparams, train_loader, val_loader=None):
         model = u.get_model(model_name, hps.get_model_params())
 
         # loss_fn = torch.nn.MSELoss(reduction="sum")
@@ -100,7 +104,6 @@ class Sensei:
                         val_loss.append(loss.item())
                         self.history_per_batch["val"].append(loss.item())
 
-
             train_loss = np.mean(batch_losses)
             history['train'].append(train_loss)
 
@@ -132,11 +135,13 @@ class Sensei:
         diffs = []
 
         if residuals:
+            # mae = u.get_loss_fn('mae')
             with torch.no_grad():
                 self.model = self.model.eval()
                 for x, y in test_loader:
                     y_hat, _ = self.model(x, None)
                     diffs.append(self.loss_fn(y, y_hat).item())
+                    # diffs.append(mae(y, y_hat).item())
                     # TODO: the code below most probably works fine only for out_dim=1: closer investigation required
                     y_hat = y_hat.detach().numpy().reshape(-1, 1)
                     y = y.detach().numpy().reshape(-1, 1)
@@ -170,75 +175,52 @@ class Sensei:
             ax.plot(y_hat, label='y_hat')
 
         if residuals:
-            return y_test, y_hat, np.array(diffs), calc_stats(y_test, y_hat)
+            # diffs = scaler.inverse_transform(np.array(diffs).reshape(-1, 1)).ravel()
+            diffs = np.abs((y_test-y_hat).ravel())
+            # diffs = np.array(diffs)
+            return y_test, y_hat, diffs, calc_stats(y_test, y_hat)
         else:
             return y_test, y_hat, calc_stats(y_test, y_hat)
 
     def plot_losses(self):
-        plt.plot(self.history_per_batch['train'], label="Training loss")
-        plt.plot(self.history_per_batch['val'], label="Validation loss")
-        plt.legend()
-        plt.title("Losses")
-        plt.show()
-        plt.close()
+        if self.history_per_epoch is None:
+            print("No recorded losses available!")
+            return
 
-    def detect_anomalies(self, ts, train_loader_one, test_loader_one, input_size, kde=True,
-                         include_n_highest_residuals:int=2):
+
+        fig, ax = plt.subplots()
+        ax.plot(self.history_per_epoch['train'], label="Training loss")
+        ax.plot(self.history_per_epoch['val'], label="Validation loss")
+        ax.set_xlabel("epoch no.")
+        ax.set_ylabel("mean loss")
+        plt.legend()
+        plt.title("Loss value per epoch")
+        # plt.show()
+
+
+    def detect_anomalies_train_set_based_threshold(self, ts, train_loader_one, test_loader_one, input_size, kde=False,
+                                                   include_n_highest_residuals: int = 2, plot=True):
+        input_size = int(input_size)
         print('Anomaly Detection Started!')
         y_train, reconstructed_train_data, residuals, metrics_train = self.evaluate(train_loader_one, residuals=True,
-                                                                                 scaler=ts.scaler)
+                                                                                    scaler=ts.scaler)
         y_test, reconstructed_test_data, residuals_test, metrics_test = self.evaluate(test_loader_one, residuals=True,
-                                                                                   scaler=ts.scaler)
+                                                                                      scaler=ts.scaler)
 
         # qs = [.1, .01, .0005]
         # qs = [.1, .01, .00025]
         qs = [.01]
-        THRESHOLDs, kde_test, train_scores = _get_threshold(residuals, include_last_n=include_n_highest_residuals, kde=kde, q=qs)
 
-        if kde:
-            residuals_test = kde_test.score_samples(residuals_test.reshape(-1, 1))
-            # plt.close(); plt.plot(residuals_test, np.zeros_like(residuals_test) + 0., marker='x', ms=2); plt.plot(residuals_test[anomalies_idxs.ravel() - n_train], np.zeros_like(residuals_test[anomalies_idxs.ravel() - n_train]) + 0., 'x', color='black', ms=20); plt.show()
+        # THRESHOLDs, kde_test, train_scores = _get_threshold(residuals, include_last_n=include_n_highest_residuals,
+        #                                                     kde=kde, q=qs)
+        # if kde:
+        #     residuals_test = kde_test.score_samples(residuals_test.reshape(-1, 1))
 
-        _plot_scores_and_thresholds(THRESHOLDs, include_n_highest_residuals, qs, residuals_test, ts)
-
-        anomalies = []
-
-        # quantiles
-        for i, q in enumerate(qs):
-            anomalies.append(
-                _hunt_anomalies(THRESHOLDs[i], input_size, reconstructed_test_data, residuals_test, ts, y_test,
-                                title=f"Detection Result [quantile: {q}]]")
-            )
-
-        # nth residuals
-        for j in range(1, include_n_highest_residuals + 1):
-            anomalies.append(
-                _hunt_anomalies(THRESHOLDs[j], input_size, reconstructed_test_data, residuals_test, ts, y_test,
-                                title=f"Detection Result [ith kde score as threshold: i={j}]")
-            )
-
-
-        plt.show()
-        qs.extend(THRESHOLDs[-include_n_highest_residuals:])
-        return dict(zip(qs, anomalies))
-
-
-    def detect_anomalies_basic(self, ts, train_loader_one, test_loader_one, input_size,
-                               include_n_highest_residuals:int=2, plot=True):
-        print('Anomaly Detection Started!')
-        y_train, reconstructed_train_data, residuals, metrics_train = self.evaluate(train_loader_one, residuals=True,
-                                                                                 scaler=ts.scaler)
-        y_test, reconstructed_test_data, residuals_test, metrics_test = self.evaluate(test_loader_one, residuals=True,
-                                                                                   scaler=ts.scaler)
-
-        # qs = [.1, .01, .0005]
-        # qs = [.1, .01, .00025]
-        qs = [.01]  # sorting is handled by numpy
-
-        THRESHOLDs = _get_threshold_basic(residuals=residuals, include_last_n=include_n_highest_residuals, qs=qs)
+        THRESHOLDs = _get_threshold_basic(residuals, include_last_n=include_n_highest_residuals,
+                                                                  qs=qs, plot=plot)
 
         if plot:
-            _plot_scores_and_thresholds(THRESHOLDs, include_n_highest_residuals, qs, residuals_test, ts)
+            _plot_scores_and_thresholds(THRESHOLDs, include_n_highest_residuals, qs, residuals_test, ts, input_size)
 
         anomalies = []
 
@@ -256,42 +238,100 @@ class Sensei:
                                 title=f"Detection Result [ith kde score as threshold: i={j}]", plot=plot)
             )
 
+        plt.show()
+        qs.extend(THRESHOLDs[-include_n_highest_residuals:])
+        return dict(zip(qs, anomalies))
+
+    def detect_anomalies_test_set_based_threshold(self, ts, test_loader_one, input_size,
+                                                  include_n_highest_residuals: int = 2, plot=True):
+        print('Anomaly Detection Started! (test)')
+        input_size = int(input_size)
+        # TODO can be done better!
+        # y_train, reconstructed_train_data, residuals, metrics_train = self.evaluate(train_loader_one, residuals=True,
+        #                                                                             scaler=ts.scaler)
+        y_test, reconstructed_test_data, residuals_test, metrics_test = self.evaluate(test_loader_one, residuals=True,
+                                                                                      scaler=ts.scaler)
+
+        # qs = [.1, .01, .0005]
+        # qs = [.1, .01, .00025]
+        qs = [.01]  # sorting is handled by numpy
+
+        THRESHOLDs = _get_threshold_basic(residuals=residuals_test, include_last_n=include_n_highest_residuals, qs=qs,
+                                          plot=plot)
+
+        if plot:
+            _plot_scores_and_thresholds(THRESHOLDs, include_n_highest_residuals, qs, residuals_test, ts, input_size)
+
+        anomalies = []
+
+        # quantiles
+        for i, q in enumerate(qs):
+            anomalies.append(
+                _hunt_anomalies(THRESHOLDs[i], input_size, reconstructed_test_data, residuals_test, ts, y_test,
+                                title=f"Detection Result [quantile: {q}]]", plot=plot)
+            )
+
+        # nth residuals
+        for j in range(len(qs), include_n_highest_residuals + len(qs)):
+            anomalies.append(
+                _hunt_anomalies(THRESHOLDs[j], input_size, reconstructed_test_data, residuals_test, ts, y_test,
+                                title=f"Detection Result [ith kde score as threshold: i={j}]", plot=plot)
+            )
 
         plt.show()
         qs.extend(THRESHOLDs[-include_n_highest_residuals:])
         return dict(zip(qs, anomalies))
 
 
-
-def _hunt_anomalies(threshold,  input_size, reconstructed_test_data,
+def _hunt_anomalies(threshold, input_size, reconstructed_test_data,
                     residuals_test, ts, y_test, title="Detection Result", plot=True):
     anomalies_count = sum(l >= threshold for l in residuals_test)
+    anomalies_idxs = np.argwhere(residuals_test >= threshold) + ts.n_train + input_size + 1
+    max_residue = np.argmax(residuals_test) + ts.n_train + input_size + 1
     # l = residuals_test[residuals_test <= threshold]
-    anomalies_idxs = np.argwhere(residuals_test >= threshold) + ts.n_train + input_size
     # anomalies_with_scores = list(zip(l, anomalies_idxs.ravel()))
+    scores_normal, scores_extended = _calc_ad_metrics(anomalies_idxs, ts, y_test, max_residue)
     if plot:
         _plot_ad_results(ts, y_test, reconstructed_test_data,
-             title=title,
-             anomalies_found=anomalies_idxs,
-             input_size=input_size)
+                         title=title,
+                         anomalies_found=anomalies_idxs,
+                         input_size=input_size,
+                         most_probable_anomaly=max_residue,
+                         scores=scores_normal)
         # plt.close()
         # plt.show()
 
     # anomaly detection -> antek
-    confusion_matrix, comp_score = _calc_ad_metrics(anomalies_idxs, ts, y_test)
     print(f">>>> threshold: {threshold}")
     print(f'Number of anomalies found: {anomalies_count}')
-    print(f"confusion matrix: {confusion_matrix}")
-    print(f"competition score: {(comp_score * 100):.2f}%")
+
+    print(f"confusion matrix: {scores_normal.confusion_matrix}")
+    print(f"confusion matrix (extended range): {scores_extended.confusion_matrix}")
+
+    print(f"competition score: {(scores_normal.competition_score * 100):.2f}%")
+    print(f"competition score (extended range): {(scores_extended.competition_score * 100):.2f}%")
+
+    print(f"competition score for the one and only anomaly: {(scores_normal.mp_competition_score * 100):.2f}%")
+    print(f"competition score for the one and only anomaly (extended range):"
+          f" {(scores_extended.mp_competition_score * 100):.2f}%")
     print("<<<<<")
 
+    return anomalies_idxs, scores_normal, scores_extended
 
-    return anomalies_idxs, confusion_matrix, comp_score
+
+def _calc_ad_metrics(anomalies_idxs, ts, y_test, most_probable_anomaly_index):
+    scores_normal = _calc_metrics_for_range(ts, anomalies_idxs, most_probable_anomaly_index,
+                                            y_test)
+
+    scores_extended = _calc_metrics_for_range(ts, anomalies_idxs, most_probable_anomaly_index,
+                                              y_test, extension=100)
+
+    return scores_normal, scores_extended
 
 
-def _calc_ad_metrics(anomalies_idxs, ts, y_test):
+def _calc_metrics_for_range(ts, anomalies_idxs, most_probable_anomaly_index, y_test, extension=0):
     X = set(np.arange(ts.n_train, ts.n_train + len(y_test)))
-    GT = set(np.arange(ts.anomaly_start, ts.anomaly_stop))
+    GT = set(np.arange(ts.anomaly_start - extension, ts.anomaly_stop + extension + 1))  # +1 -> inclusive range
     GT_complement = X.difference(GT)
     P = set(anomalies_idxs.ravel())
     P_complement = X.difference(P)
@@ -299,24 +339,36 @@ def _calc_ad_metrics(anomalies_idxs, ts, y_test):
     FP = set.intersection(P, GT_complement)
     FN = set.intersection(P_complement, GT)
     TN = set.intersection(P_complement, GT_complement)
-
     confusion_matrix = [[len(TP), len(FP)], [len(FN), len(TN)]]
+    # confusion_matrix = {
+    #     'TP': len(TP),
+    #     'FP': len(FP),
+    #     'FN': len(FN),
+    #     'TN': len(TN)
+    # }
     denom = len(TP) + len(FP)
     if denom != 0:
         competition_score = len(TP) / denom
     else:
         competition_score = 0
+    if most_probable_anomaly_index in GT:
+        mp_competition_score = 1
+    else:
+        mp_competition_score = 0
 
-    return confusion_matrix, competition_score
+    scores = namedtuple('scores', ['competition_score', 'confusion_matrix', 'mp_competition_score'])
+
+    return scores(competition_score, confusion_matrix, mp_competition_score)
 
 
-def _plot_scores_and_thresholds(THRESHOLDs, n_const, qs, residuals_test, ts):
+def _plot_scores_and_thresholds(THRESHOLDs, n_const, qs, residuals_test, ts, input_size):
     fig, ax = plt.subplots()
     ax.plot(residuals_test, np.zeros_like(residuals_test) + 0., marker='o', ms=10, linestyle="None",
-                        label='all scores')
-    ax.plot(residuals_test[np.arange(ts.anomaly_start - ts.n_train, ts.anomaly_stop - ts.n_train)],
-                        np.zeros_like(
-                residuals_test[np.arange(ts.anomaly_start - ts.n_train, ts.anomaly_stop - ts.n_train)]) + 0.,
+            label='all scores')
+    gt_range = np.arange(ts.anomaly_start - ts.n_train - input_size - 1, ts.anomaly_stop - ts.n_train - input_size)
+    ax.plot(residuals_test[gt_range],
+            np.zeros_like(
+                residuals_test[gt_range]) + 0.,
             'H', ms=6, label='GT')
 
     dashlist = [(5, 2), (2, 5), (4, 10), (3, 3, 2, 2), (5, 2, 20, 2)]
@@ -332,16 +384,15 @@ def _plot_scores_and_thresholds(THRESHOLDs, n_const, qs, residuals_test, ts):
                    # c='black',
                    c=cmap(i),
                    ymin=0.4, ymax=0.6,
-                   label=f'threshold: q={qs[i]} value: {THRESHOLDs[i]:.4f}')
+                   label=f'threshold: q={qs[i]}, value: {THRESHOLDs[i]:.4f}')
 
     for j in range(len(qs), n_const + len(qs)):
-        ax.axvline(THRESHOLDs[-j],
+        ax.axvline(THRESHOLDs[j],
                    ls='-',
                    # dashes=dashlist[i],
                    c='black',
                    ymin=0.3, ymax=0.7,
-                   label=f'ith highest residual: [i={j} value: {THRESHOLDs[-j]:.4f}]')
-
+                   label=f'ith highest residual: [i={j}, value: {THRESHOLDs[j]:.4f}]')
 
     ax.set_xlabel('log-likelihood of each sample under the model')
     ax.yaxis.set_visible(False)
@@ -366,36 +417,45 @@ def calc_stats(gt, y_hat, scaler=None):
     return metrics(mae, mse, rmse, r2)
 
 
-def _plot_ad_results(ts, y_test, y_hat, anomalies_found, input_size, title="result"):
+def _plot_ad_results(ts, y_test, y_hat, anomalies_found, input_size, title="result",
+                     most_probable_anomaly=None, scores=None):
     input_size = int(input_size)
     anomalies_found = anomalies_found.ravel().astype(int)
-    X = np.arange(ts.n_train + input_size, len(y_test) + ts.n_train + input_size)
+    X = np.arange(ts.n_train + input_size + 1, len(y_test) + ts.n_train + input_size + 1)
     fig, ax = plt.subplots(figsize=(12, 6))
     # ax.scatter(x=X, y=y_test, label='y')
     # ax.scatter(x=X, y=y_hat, label='y_hat')
 
-    ax.axvspan(ts.anomaly_start, ts.anomaly_stop, alpha=0.2, color='salmon', label='expected anomaly occurrence area')
-    # ax.scatter(x=anomalies_found, y=dataset[anomalies_found+input_size],
-    #            marker='x', c='purple', label='anomalies found - input_sizex')
-    # ax.plot(dataset[input_size:], label="dataset")
-    # ax.plot(dataset, label="dataset")
-    ax.plot(X, y_test, label='ground truth')
-    ax.plot(X, y_hat, label='predictions')
-    # print(anomalies_found, ts.n_train, input_size)
-    ax.scatter(x=anomalies_found, y=y_test[anomalies_found - ts.n_train - input_size],
-               marker='x', c='black', label='anomalies detected')
-    # ax.scatter(x=anomalies_found+input_size, y=dataset[anomalies_found],
-    #            marker='x', c='black', label='anomalies detected')
-    # ax.scatter(x=anomalies_found+input_size, y=y_test[anomalies_found-test_idx+input_size],
-    #            marker='o', c='yellow', label='anomalies detected shifted')
+    ax.axvspan(ts.anomaly_start - 100, ts.anomaly_stop + 100, alpha=0.1, color='mediumseagreen', label='extended AOA')
+    ax.axvspan(ts.anomaly_start, ts.anomaly_stop, alpha=0.3, color='mediumseagreen',
+               label='expected anomaly occurrence area (AOA)')
+
+    ax.plot(X, y_test, label='ground truth', zorder=1)
+    ax.plot(X, y_hat, label='predictions', zorder=2)
+
+    ax.scatter(x=anomalies_found, y=y_test[anomalies_found - ts.n_train - input_size - 1],
+               marker='x', c='black', label=f'anomalies detected [score: {(scores.competition_score * 100):.2f}%]',
+               zorder=3)
+
+    if most_probable_anomaly is not None:
+        # max_marker = '$MAX$'
+        max_marker = "+"
+        # max_marker = 7
+
+        # color = 'blueviolet'
+        color = 'seagreen'
+
+        ax.scatter(x=most_probable_anomaly, y=y_test[int(most_probable_anomaly - ts.n_train - input_size - 1)],
+                   marker=max_marker, s=100, c=color,
+                   label=f'most probable anomaly [score: {(scores.mp_competition_score * 100):.2f}%]',
+                   zorder=4)
     ax.set_title(title)
     plt.legend()
     plt.tight_layout()
     # plt.show()
 
 
-def _get_threshold_basic(residuals: np.array, include_last_n:int=2, qs=None, plot=True):
-
+def _get_threshold_basic(residuals: np.array, include_last_n: int = 2, qs=None, plot=True):
     if plot:
         # sns.displot(data=residuals, bins=50, kde=True)
         sns.displot(data=residuals, kde=True)
@@ -406,13 +466,13 @@ def _get_threshold_basic(residuals: np.array, include_last_n:int=2, qs=None, plo
 
     if qs is not None:
         for q in qs:
-            t.append(np.quantile(residuals, 1-q))
+            t.append(np.quantile(residuals, 1 - q))
 
     t.extend(residuals[:include_last_n])
     return t
 
 
-def _get_threshold(residuals: np.array, kde=False, include_last_n:int=2, q=[0.01]):
+def _get_threshold(residuals: np.array, kde=False, include_last_n: int = 2, q=[0.01]):
     # bins = np.linspace(losses.min(), losses.max(), 50)
     # bin_nums = np.digitize(losses, bins) - 1
     # hist_vals = np.bincount(bin_nums)
@@ -437,9 +497,13 @@ def _get_threshold(residuals: np.array, kde=False, include_last_n:int=2, q=[0.01
         gt = scores
     else:
         kde = None
-        # thresholds = losses.max()
-        thresholds = residuals[-include_last_n:]  # TODO: sort first!
-        sns.displot(residuals, bins=50, kde=True)
+        # # thresholds = losses.max()
+        # thresholds = residuals[-include_last_n:]  # TODO: sort first!
+        # sns.displot(residuals, bins=50, kde=True)
+        thresholds = _get_threshold_basic(residuals=residuals, include_last_n=include_last_n, qs=q, plot=True)
 
     return thresholds, kde, gt
 
+
+def _get_n_biggest_residuals(residuals, n=1, starting_index=0):
+    return residuals.argmax() + starting_index, residuals.max()

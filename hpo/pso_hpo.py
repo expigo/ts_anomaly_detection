@@ -9,7 +9,14 @@ import numpy as np
 import torch
 
 from datetime import datetime
+from enum import Enum
 import copy
+
+
+class PSO_EVAL_MODE(Enum):
+    VAL_SET = 'val'
+    TRAIN_SET = 'train'
+    CV = 'cv'  # TODO
 
 
 def counted(f):
@@ -23,7 +30,8 @@ def counted(f):
 
 class PSO_HPO:
     def __init__(self, hps: Hyperparams, swarm_size=16, N=10,
-                 ts=None, ts_desc=None):
+                 ts=None, ts_desc=None, dest_dir: str = './',
+                 eval_mode: PSO_EVAL_MODE = PSO_EVAL_MODE.VAL_SET):
         self.pso = PSO(swarm_size, N)
         self.hps = hps
         if not (ts and ts_desc):
@@ -32,7 +40,11 @@ class PSO_HPO:
         self.ts_desc = ts_desc
         self.best_fitness = np.inf
         self.best_senseis: [Sensei] = []
-        self.name = f'pso_{swarm_size}_{N}_' + datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.eval_mode = eval_mode
+        self.name = f'{dest_dir}/{self.eval_mode.value}/pso_{swarm_size}_{N}_' + datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
+
 
     @counted
     def _tune(self,
@@ -54,7 +66,8 @@ class PSO_HPO:
                                       output_size=self.hps['output_size'],
                                       val_set=True)
 
-        model = mutils.get_model(model_info["type"], self.hps.get_model_params())
+        model_params = self.hps.get_model_params() | {key: model_info[key] for key in ['af']}
+        model = mutils.get_model(model_info["type"], model_params)
 
         # loss_fn = torch.nn.MSELoss(reduction="sum")
         # loss_fn = torch.nn.MSELoss(reduction="mean")
@@ -67,14 +80,22 @@ class PSO_HPO:
 
         trained, history = s.train(self.hps['n_epochs'], dls.train_loader, dls.val_loader)
 
-        y_test, y_hat, losses, metrics = s.evaluate(
-            test_loader=dls.val_loader_one,
-            # scaler=self.ts.scaler,
-            residuals=True
-        )
+        if self.eval_mode is PSO_EVAL_MODE.VAL_SET:
+            y_test, y_hat, losses, metrics = s.evaluate(
+                test_loader=dls.val_loader_one,
+                scaler=self.ts.scaler,
+                residuals=True
+            )
+        elif self.eval_mode is PSO_EVAL_MODE.TRAIN_SET:
+            y_test, y_hat, losses, metrics = s.evaluate(
+                test_loader=dls.train_loader_one,
+                scaler=self.ts.scaler,
+                residuals=True
+            )
+        else:
+            raise ValueError("Not implemented error")
 
         # current_fitness = metrics.mae
-        # current_fitness = metrics.rmse
         current_fitness = getattr(metrics, model_info["loss_fn"])
 
         if current_fitness < self.best_fitness:
@@ -85,15 +106,16 @@ class PSO_HPO:
             if save_results:
                 self.best_senseis[-1].save_model(dataset_desc=self.ts_desc, model_info=model_info,
                                                  hps=self.best_hps, val_set=True,
-                                                 root='val/' + self.name + f'_{model_info["type"]}_{model_info["loss_fn"]}_{model_info["activation_function"]}',
+                                                 root=self.name +
+                                                      f'_{model_info["type"]}_{model_info["loss_fn"]}_{model_info["af"]}',
                                                  name='model_' + datetime.now().strftime(
                                                      "%Y%m%d-%H%M%S") + f'_{self._tune.calls}'
                                                  )
 
-
         return current_fitness
 
     def run(self, model={'type': 'gru'}, save_results=True):
+
         # 1. get space definition
         space_def = self.hps.build()
 
